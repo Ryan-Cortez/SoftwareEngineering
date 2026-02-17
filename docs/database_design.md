@@ -1,3 +1,5 @@
+# Core Entities
+
 ## movie
 
 | Component Name     | Data Type      | Primary Key | Foreign Key | Notes    |

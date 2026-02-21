@@ -1,10 +1,11 @@
 from flask import Flask, render_template
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint, Index
+import os
 
 app = Flask(__name__)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+pymysql://root@localhost/dawghouse_db"
+app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+mysqlconnector://cinema_user:cinema_password@127.0.0.1:3306/cinema"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)

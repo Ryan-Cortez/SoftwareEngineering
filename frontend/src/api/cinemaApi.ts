@@ -1,5 +1,8 @@
 export type MovieStatus = "CURRNETLY_RUNNING" | "COMING_SOON";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000";
+
 export type Movie = {
     id: number;
     title: string;
@@ -45,14 +48,19 @@ function normalizeMovie (raw: any): Movie {
 }
 
 export async function getMovies( search: string = " ", genre: string = " ", showDate: string = " "): Promise<Movie[]> {
-    const res = await fetch(`/api/movies?search=${search}&genre=${genre}&showDate=${showDate}`);
+    const params = new URLSearchParams({
+      search,
+      genre,
+      showDate,
+    });
+    const res = await fetch(`${API_BASE_URL}/api/movies?${params.toString()}`);
     if (!res.ok) throw new Error("Failed to load movies");
     const data = await res.json();
     return Array.isArray(data) ? data.map(normalizeMovie) : [];
 } 
 
 export async function getMovieById(id: number): Promise<MovieDetails> {
-    const res = await fetch(`/api/movies/${id}`);
+    const res = await fetch(`${API_BASE_URL}/api/movies/${id}`);
     if (!res.ok) throw new Error("Failed to load movie details");
     const raw = await res.json();
     const base = normalizeMovie(raw);

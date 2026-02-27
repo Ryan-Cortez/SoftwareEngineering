@@ -14,10 +14,15 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint, Index
 from datetime import datetime
 import os
+from flask_cors import CORS
 
 # Flask application instance. In production you may create this via an app factory,
 # but keeping it module-level is fine for a small project.
 app = Flask(__name__)
+
+# Allow cross-origin requests so the Vite dev server (localhost:5173) can call the API.
+# This enables CORS for all routes and methods; you can tighten this later if needed.
+CORS(app)
 
 from dotenv import load_dotenv
 load_dotenv()

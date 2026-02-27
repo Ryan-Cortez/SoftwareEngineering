@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getMovieById, type MovieDetails } from "../api/cinemaApi.ts";
 
@@ -10,6 +10,30 @@ export default function MovieDetails() {
     
     const [movie, setMovie] = useState<MovieDetails | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const trailerEmbedUrl = useMemo(() => {
+        if (!movie?.trailerUrl) return "";
+        const url = movie.trailerUrl;
+
+        // Handle youtu.be short links
+        if (url.includes("youtu.be/")) {
+            const idPart = url.split("youtu.be/")[1] ?? "";
+            const videoId = idPart.split(/[?&]/)[0];
+            return `https://www.youtube.com/embed/${videoId}`;
+        }
+
+        // Handle standard watch URLs
+        if (url.includes("youtube.com/watch")) {
+            const query = url.split("?")[1] ?? "";
+            const params = new URLSearchParams(query);
+            const videoId = params.get("v");
+            if (videoId) {
+                return `https://www.youtube.com/embed/${videoId}`;
+            }
+        }
+
+        return url;
+    }, [movie?.trailerUrl]);
 
     useEffect(() => {
         let cancelled = false;
@@ -32,40 +56,66 @@ export default function MovieDetails() {
     if (!movie) return <div>Loading...</div>;
 
     return (
-        <div>
-            <button onClick={() => navigate(-1)}>
-                Back
-            </button>
-            <div>
-                <img src={movie?.posterUrl} alt={movie?.title}/>
-                <div> 
-                    <h1>{movie?.title}</h1>
-                    <div> {movie?.genre} * {movie?.rating} * {movie?.status} </div>
-                    <p> {movie?.description} </p>
-                    <h3>Trailer</h3>
-                    <div>
-                        <iframe
-                            width="100%"
-                            height="360"
-                            src={movie.trailerUrl}
-                            allowFullScreen
-                        />
+        <main className="page">
+            <div className="movie-details">
+                <button className="movie-details__back" onClick={() => navigate(-1)}>
+                    ← Back
+                </button>
+
+                <div className="movie-details__layout">
+                    <div className="movie-details__poster-wrap">
+                        <div className="movie-details__poster-frame">
+                            <img
+                                className="movie-details__poster"
+                                src={movie.posterUrl}
+                                alt={movie.title}
+                            />
+                        </div>
                     </div>
-                    <h3>Showtimes</h3>
-                    <div>
-                        {movie.showtimes.map((t) => (
-                            <button key={t} onClick={() => navigate(`/booking?movieId=${movie.id}&showtime=${encodeURIComponent(t)}`)
-                        }
-                        style={{
-                            padding: "10px 12px"
-                        }}
-                        >
-                            {t}
-                        </button>
-                        ))}
+
+                    <div className="movie-details__content">
+                        <h1 className="movie-details__title">{movie.title}</h1>
+                        <div className="movie-details__meta">
+                            <span>{movie.genre}</span>
+                            {movie.rating && <span>• {movie.rating}</span>}
+                            <span>• {movie.status === "CURRENTLY_RUNNING" ? "Now Playing" : "Coming Soon"}</span>
+                        </div>
+
+                        <p className="movie-details__description">{movie.description}</p>
+
+                        <h3 className="movie-details__section-title">Trailer</h3>
+                        <div className="movie-details__trailer">
+                            {trailerEmbedUrl ? (
+                                <iframe
+                                    width="100%"
+                                    height="360"
+                                    src={trailerEmbedUrl}
+                                    allowFullScreen
+                                />
+                            ) : (
+                                <p>Trailer not available.</p>
+                            )}
+                        </div>
+
+                        <h3 className="movie-details__section-title">Showtimes</h3>
+                        <div className="movie-details__showtimes">
+                            {movie.showtimes.map((t) => (
+                                <button
+                                    key={t}
+                                    className="movie-details__showtime-btn"
+                                    onClick={() =>
+                                        navigate(
+                                            `/booking?movieId=${movie.id}&showtime=${encodeURIComponent(t)}`
+                                        )
+                                    }
+                                >
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

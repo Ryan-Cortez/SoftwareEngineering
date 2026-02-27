@@ -1,4 +1,4 @@
-export type MovieStatus = "CURRNETLY_RUNNING" | "COMING_SOON";
+export type MovieStatus = "CURRENTLY_RUNNING" | "COMING_SOON";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000";

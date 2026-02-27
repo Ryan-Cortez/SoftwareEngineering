@@ -1,12 +1,93 @@
 import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import MovieCard from "../components/MovieCard";
+//import { getMovies } from "../api/cinemaApi";
+import type { Movie, MovieStatus } from "../api/cinemaApi";
+import { MOCK_MOVIES } from "../components/mockMovies";
+import MainCard from "../components/MainCard";
 
-export default function Landing() {
+export default function Home() {
+  const [status, setStatus] = useState<MovieStatus>("CURRENTLY_RUNNING");
+  const [search, setSearch] = useState("");
+  // const [movies, setMovies] = useState<Movie[]>([]);
+  const [movies, setMovies] = useState(MOCK_MOVIES);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // useEffect(() => {
+  //   let cancelled = false;
+
+  //   async function load() {
+  //     setLoading(true);
+  //     setError(null);
+  //     try {
+  //       const data = await getMovies(search.trim() || "", "", "");
+  //       const filtered = data.filter((m) => m.status === status);
+  //       if (!cancelled) setMovies(filtered);
+  //     } catch (e) {
+  //       if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
+  //     } finally {
+  //       if (!cancelled) setLoading(false);
+  //     }
+  //   }
+
+
+
+  //   load();
+  //   return () => {
+  //     cancelled = true;
+  //   };
+  // }, [status, search]);
+
+  useEffect(() => {
+    // 👇 replace API fetching with client-side filtering
+    const filtered = MOCK_MOVIES.filter((m) => {
+      const matchesStatus = m.status === status;
+      const matchesSearch =
+        !search.trim() || m.title.toLowerCase().includes(search.trim().toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+
+    setMovies(filtered);
+  }, [status, search]);
+
+  const title = useMemo(
+    () => (status === "CURRENTLY_RUNNING" ? "Now Playing" : "Coming Soon"),
+    [status]
+  );
+
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Welcome</h1>
-      <p>This is the landing page.</p>
+    <main className="page">
+      <div className="brand-title">
+        <h1 className="brand-title">The Dawg House</h1>
+      </div>
+      <header className="movies-header">
+        <h2>{title}</h2>
 
-      <Link to="/login">Go to Login</Link>
-    </div>
+        <div className="movies-controls">
+          <div className="segmented">
+            <button className={status === "CURRENTLY_RUNNING" ? "active" : ""} onClick={() => setStatus("CURRENTLY_RUNNING")}>
+              Released
+            </button>
+            <button className={status === "COMING_SOON" ? "active" : ""} onClick={() => setStatus("COMING_SOON")}>
+              Unreleased
+            </button>
+          </div>
+
+          
+        </div>
+      </header>
+
+      {loading && <p>Loading movies…</p>}
+      {error && <p className="error">{error}</p>}
+
+      {!loading && !error && (
+        <section className="movie-grid">
+          {movies.map((m) => (
+            <MainCard key={m.id} movie={m} />
+          ))}
+        </section>
+      )}
+    </main>
   );
 }

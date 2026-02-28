@@ -61,7 +61,48 @@ export default function Search() {
                     marginBottom: 16,
             }}
         >
+            <div>
+                <label>Search titile</label>
+                <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="e.g. Spider"
+                />
+            </div>
+            <div>
+                <label>Filter</label>
+                <select
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                >
+                    <option value="">All</option>
+                    {genreOptions.map((g) => (
+                        <option key={g} value={g}>
+                            {g}
+                    </option>
+                    ))}
+                    </select>
+            </div>
+            
+            <button onClick={() => {
+                setSearch(" ");
+                setGenre(" ");
+                setShowDate(" ");
+            }}
+            disabled={!hasFilters}
+            >Clear</button>
+            </div>
 
+            {loading && <div>Loading</div>}
+            {error && <div>{error}</div>}
+
+            {!loading && !error && movies.length === 0 && (
+                <div>No movies matchyour search/filter criteria.</div>
+            )}
+            <div style={gridStyle}>
+                {movies.map((m) => (
+                    <MovieCard key={m.id} movie={m}/>
+                ))}
             </div>
         </div>
     )

@@ -1,0 +1,68 @@
+import { useEffect, useMemo, useState } from "react";
+import MovieCard from "../components/MovieCard";
+import { getMovies, type Movie } from "../api/cinemaApi";
+
+export default function Search() {
+    const [movies, setMovies] = useState<Movie[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const [search, setSearch] = useState(" ");
+    const [genre, setGenre] = useState(" ");
+    const [showDate, setShowDate] = useState(" ");
+
+    useEffect (() => {
+        let cancelled = false;
+
+        async function load() {
+            setLoading(true);
+            setError(null);
+            try {
+
+                const data = await getMovies(search, genre, showDate);
+                if (!cancelled) setMovies(data);
+            } catch (e) {
+                if (!cancelled) setError("Could not load movies. Is the backend running?");
+
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+        const t = setTimeout(load, 250);
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
+        };
+    }, [search, genre, showDate]);
+
+    const genreOptions = useMemo(() => {
+        const set = new Set(movies.map((m) => m.genre).filter(Boolean));
+        return Array.from(set).sort();
+    }, [movies]);
+
+    const gridStyle: React.CSSProperties = {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill)",
+        gap: 16,
+    };
+
+    const hasFilters = search.trim() || genre.trim() || showDate.trim();
+
+    return (
+        <div style={{padding: 16}}>
+            <h1>Browse Movies</h1>
+            <div>Search by Title, filter by genre, or filter by show date</div>
+            <div 
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 220px 220px 120px",
+                    gap: 12,
+                    alignItems: "end",
+                    marginBottom: 16,
+            }}
+        >
+
+            </div>
+        </div>
+    )
+}

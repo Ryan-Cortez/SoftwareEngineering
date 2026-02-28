@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import MovieCard from "../components/MovieCard";
+import MainCard from "../components/MainCard";
 import { getMovies, type Movie } from "../api/cinemaApi";
 
 export default function Search() {
@@ -101,7 +102,7 @@ export default function Search() {
             )}
             <div style={gridStyle}>
                 {movies.map((m) => (
-                    <MovieCard key={m.id} movie={m}/>
+                    <MainCard key={m.id} movie={m}/>
                 ))}
             </div>
         </div>

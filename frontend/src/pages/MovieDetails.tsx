@@ -99,17 +99,25 @@ export default function MovieDetails() {
 
                         <h3 className="movie-details__section-title">Showtimes</h3>
                         <div className="movie-details__showtimes">
-                            <button
-                                    className="booking_prototype_btn"
-                                    onClick={() =>
-                                        navigate(
-                                            `/booking`
-                                        )
-                                    }
-                                > BOOK NOW
                     
-                                </button>
-                            
+                            <button        
+                                className="booking_prototype_btn"
+                                onClick={() =>
+                                    navigate(`/booking`)
+                                }
+                            > 2:00 PM </button>
+                            <button        
+                                className="booking_prototype_btn"
+                                onClick={() =>
+                                    navigate(`/booking`)
+                                }
+                            > 5:00 PM </button>
+                            <button        
+                                className="booking_prototype_btn"
+                                onClick={() =>
+                                    navigate(`/booking`)
+                                }
+                            > 8:00 PM </button>
                         </div>
                     </div>
                 </div>

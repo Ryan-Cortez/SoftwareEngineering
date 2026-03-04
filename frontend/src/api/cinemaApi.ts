@@ -47,7 +47,7 @@ function normalizeMovie (raw: any): Movie {
     };
 }
 
-export async function getMovies( search: string = " ", genre: string = " ", showDate: string = " "): Promise<Movie[]> {
+export async function getMovies( search: string = "", genre: string = "", showDate: string = ""): Promise<Movie[]> {
     const params = new URLSearchParams({
       search,
       genre,

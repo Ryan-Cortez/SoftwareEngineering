@@ -63,7 +63,7 @@ export default function Search() {
             }}
         >
             <div>
-                <label>Search titile</label>
+                <label>Search Title </label>
                 <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -71,7 +71,7 @@ export default function Search() {
                 />
             </div>
             <div>
-                <label>Filter</label>
+                <label>Filter </label>
                 <select
                     value={genre}
                     onChange={(e) => setGenre(e.target.value)}
@@ -100,11 +100,14 @@ export default function Search() {
             {!loading && !error && movies.length === 0 && (
                 <div>No movies matchyour search/filter criteria.</div>
             )}
-            <div style={gridStyle}>
-                {movies.map((m) => (
-                    <MainCard key={m.id} movie={m}/>
-                ))}
-            </div>
+            
+            {!loading && !error && (
+                <section className="movie-grid">
+                  {movies.map((m) => (
+                    <MainCard key={m.id} movie={m} />
+                  ))}
+                </section>
+            )}
         </div>
     )
 }

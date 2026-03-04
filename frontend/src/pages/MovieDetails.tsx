@@ -99,19 +99,17 @@ export default function MovieDetails() {
 
                         <h3 className="movie-details__section-title">Showtimes</h3>
                         <div className="movie-details__showtimes">
-                            {movie.showtimes.map((t) => (
-                                <button
-                                    key={t}
-                                    className="movie-details__showtime-btn"
+                            <button
+                                    className="booking_prototype_btn"
                                     onClick={() =>
                                         navigate(
-                                            `/booking?movieId=${movie.id}&showtime=${encodeURIComponent(t)}`
+                                            `/booking`
                                         )
                                     }
-                                >
-                                    {t}
+                                > BOOK NOW
+                    
                                 </button>
-                            ))}
+                            
                         </div>
                     </div>
                 </div>

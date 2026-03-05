@@ -69,5 +69,6 @@ export async function getMovieById(id: number): Promise<MovieDetails> {
       raw.showtimes ?? (Array.isArray(raw.shows) ? raw.shows.map((s: any) => String (s.show_time)) : ["2:00 PM", "5:00 PM", "8:00 PM"]);
     return {...base, showtimes };
 
+    // this is not yet used because the booking page doe not use an id (just a prototype)
 }
     

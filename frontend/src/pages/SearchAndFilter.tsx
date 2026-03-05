@@ -40,6 +40,11 @@ export default function Search() {
         return Array.from(set).sort();
     }, [movies]);
 
+    const showDateOptions = useMemo(() => {
+        const set = new Set(movies.map((m) => m.showDate).filter(Boolean));
+        return Array.from(set).sort();
+    }, [movies]);
+
     const gridStyle: React.CSSProperties = {
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill)",
@@ -53,6 +58,7 @@ export default function Search() {
             <h1 className="movies-header">Browse Movies</h1>
             <header className="movies-header">
             <div>Search by Title, filter by genre, or filter by show date</div>
+            
             <div 
                 style={{
                     display: "grid",
@@ -62,7 +68,8 @@ export default function Search() {
                     marginBottom: 16,
             }}
         >
-            <div>
+            
+            <div className="filter">
                 <label>Search Title </label>
                 <input
                     value={search}
@@ -70,8 +77,8 @@ export default function Search() {
                     placeholder="e.g. Spider"
                 />
             </div>
-            <div>
-                <label>Filter </label>
+            <div className="filter">
+                <label>Genre Filter </label>
                 <select
                     value={genre}
                     onChange={(e) => setGenre(e.target.value)}
@@ -80,6 +87,20 @@ export default function Search() {
                     {genreOptions.map((g) => (
                         <option key={g} value={g}>
                             {g}
+                    </option>
+                    ))}
+                    </select>
+            </div>
+            <div>
+                <label>Showtimes Filter </label>
+                <select
+                    value={showDate}
+                    onChange={(e) => setShowDate(e.target.value)}
+                >
+                    <option value="">All</option>
+                    {showDateOptions.map((s) => (
+                        <option key={s} value={s}>
+                            {s}
                     </option>
                     ))}
                     </select>
@@ -98,9 +119,9 @@ export default function Search() {
             {error && <div>{error}</div>}
 
             {!loading && !error && movies.length === 0 && (
-                <div>No movies matchyour search/filter criteria.</div>
+                <div>No movies match your search/filter criteria.</div>
             )}
-            
+
             {!loading && !error && (
                 <section className="movie-grid">
                   {movies.map((m) => (
@@ -109,5 +130,6 @@ export default function Search() {
                 </section>
             )}
         </div>
+        </main>
     )
 }

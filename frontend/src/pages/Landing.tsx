@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import MovieCard from "../components/MovieCard";
 import { getMovies } from "../api/cinemaApi";
 import type { Movie, MovieStatus } from "../api/cinemaApi";
 import MainCard from "../components/MainCard";

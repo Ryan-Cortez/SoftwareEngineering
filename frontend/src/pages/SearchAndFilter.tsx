@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import MovieCard from "../components/MovieCard";
 import MainCard from "../components/MainCard";
 import { getMovies, type Movie } from "../api/cinemaApi";
 
@@ -50,8 +49,9 @@ export default function Search() {
     const hasFilters = search.trim() || genre.trim() || showDate.trim();
 
     return (
-        <div style={{padding: 16}}>
-            <h1>Browse Movies</h1>
+        <div className="page">
+            <h1 className="movies-header">Browse Movies</h1>
+            <header className="movies-header">
             <div>Search by Title, filter by genre, or filter by show date</div>
             <div 
                 style={{
@@ -93,7 +93,7 @@ export default function Search() {
             disabled={!hasFilters}
             >Clear</button>
             </div>
-
+            </header>
             {loading && <div>Loading</div>}
             {error && <div>{error}</div>}
 

@@ -1,0 +1,118 @@
+@startuml
+
+class Movie {
+  movieId
+  title
+  genre
+  status
+  synopsis
+  trailerImageUrl
+  trailerVideoUrl
+  mpaaRating
+}
+
+class MovieContributor {
+  movieId
+  personName
+  role
+}
+
+
+class FavoriteMovie {
+  userId
+  movieId
+}
+
+class Review {
+  reviewId
+  movieId
+  author
+  title
+  body
+}
+
+class Show {
+  showId
+  movieId
+  hallId
+  startTime
+}
+
+class Hall {
+  hallId
+}
+
+class Seat {
+  seatId
+  hallId
+  rowLabel
+  seatNumber
+}
+
+class TicketPrice {
+  ageCategory
+  price
+}
+
+class User {
+  userId
+  firstName
+  lastName
+  email
+  phoneNumber
+  passwordHash
+  isSuspended
+  isAdmin
+  promotionOptIn
+}
+
+class PaymentCard {
+  cardId
+  userId
+  cardNumber
+  expirationDate
+  billingAddress
+}
+
+class Ticket {
+  ticketId
+  bookingId
+  showId
+  seatId
+  ageCategory
+}
+
+class Booking {
+  bookingId
+  userId
+  cardId
+  bookingTime
+  promotionId
+}
+
+class Promotion {
+  promotionId
+  code
+  description
+  discountType
+  discountValue
+  expirationDate
+}
+
+
+
+
+User "1" -- "*" Booking : books
+Booking "1" -- "*" Ticket : is part of
+Ticket "*" -- "1" Show : is for
+MovieContributor "*" -- "*" Movie : contributes to
+FavoriteMovie "*" -- "*" User : has
+PaymentCard "0..3" -- "1" User : stores
+Seat "*" -- "1" Hall : contains
+Movie "1" -- "*" Review : has
+Show "*" -- "1" Hall : takes place in
+Show "*" -- "1" Movie : is showing
+Ticket "*" -- "1" Seat : reserves
+Promotion "0..1" -- "*" Booking
+
+@enduml

@@ -21,6 +21,10 @@ class FavoriteMovie {
 
 }
 
+class Recommendation {
+  generatedOn
+}
+
 class Review {
   reviewId
   movieId
@@ -142,6 +146,9 @@ Booking "*" -- "1" Show : is for
 Movie "1" -- "*" MovieContributor : has
 Customer "*" -- "*" Movie : favorites
 (Customer, Movie) .. FavoriteMovie
+
+Customer "1" -- "*" Recommendation : receives
+Recommendation "*" -- "*" Movie : suggests
 
 Customer "1" -- "0..3" PaymentCard : stores
 Customer "1" -- "0..1" Address : provides

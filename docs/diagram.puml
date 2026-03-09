@@ -17,10 +17,8 @@ class MovieContributor {
   role
 }
 
-
 class FavoriteMovie {
-  userId
-  movieId
+
 }
 
 class Review {
@@ -34,24 +32,21 @@ class Review {
 class Show {
   showId
   movieId
-  hallId
+  showroomId
   startTime
+  duration
 }
 
-class Hall {
-  hallId
+class Showroom {
+  showroomId
+  showroomName
 }
 
 class Seat {
   seatId
-  hallId
+  showroomId
   rowLabel
   seatNumber
-}
-
-class TicketPrice {
-  ageCategory
-  price
 }
 
 class User {
@@ -61,9 +56,29 @@ class User {
   email
   phoneNumber
   passwordHash
-  isSuspended
-  isAdmin
+}
+
+class Customer {
   promotionOptIn
+  status : CustomerStatus
+}
+
+enum CustomerStatus {
+  Active
+  Inactive
+  Suspended
+}
+
+class Admin {
+}
+
+class Address {
+  addressId
+  userId
+  street
+  city
+  state
+  zipCode
 }
 
 class PaymentCard {
@@ -76,18 +91,36 @@ class PaymentCard {
 
 class Ticket {
   ticketId
+  type : TicketType
   bookingId
-  showId
   seatId
-  ageCategory
+}
+
+enum TicketType {
+  Adult
+  Senior
+  Child
+}
+
+class TicketPrice {
+  type : TicketType
+  price
 }
 
 class Booking {
   bookingId
   userId
   cardId
+  showId
   bookingTime
   promotionId
+  paymentReference
+}
+
+class BookingFee {
+  feeId
+  amount
+  isActive
 }
 
 class Promotion {
@@ -99,20 +132,28 @@ class Promotion {
   expirationDate
 }
 
+User <|-- Customer
+User <|-- Admin
 
+Customer "1" -- "*" Booking : books
+Booking "1" *-- "*" Ticket : contains
+Booking "*" -- "1" Show : is for
 
+Movie "1" -- "*" MovieContributor : has
+Customer "*" -- "*" Movie : favorites
+(Customer, Movie) .. FavoriteMovie
 
-User "1" -- "*" Booking : books
-Booking "1" -- "*" Ticket : is part of
-Ticket "*" -- "1" Show : is for
-MovieContributor "*" -- "*" Movie : contributes to
-FavoriteMovie "*" -- "*" User : has
-PaymentCard "0..3" -- "1" User : stores
-Seat "*" -- "1" Hall : contains
+Customer "1" -- "0..3" PaymentCard : stores
+Customer "1" -- "0..1" Address : provides
+
+Showroom "1" *-- "*" Seat : contains
 Movie "1" -- "*" Review : has
-Show "*" -- "1" Hall : takes place in
-Show "*" -- "1" Movie : is showing
+Showroom "1" -- "*" Show : hosts
+Movie "1" -- "*" Show : has
+
 Ticket "*" -- "1" Seat : reserves
-Promotion "0..1" -- "*" Booking
+Booking "*" -- "0..1" Promotion : uses
+BookingFee "1" -- "*" Booking : determines fee for
+TicketPrice "1" -- "*" Ticket : determines price for
 
 @enduml

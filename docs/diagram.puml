@@ -1,0 +1,166 @@
+@startuml
+
+class Movie {
+  movieId
+  title
+  genre
+  status
+  synopsis
+  trailerImageUrl
+  trailerVideoUrl
+  mpaaRating
+}
+
+class MovieContributor {
+  movieId
+  personName
+  role
+}
+
+class FavoriteMovie {
+
+}
+
+class Recommendation {
+  generatedOn
+}
+
+class Review {
+  reviewId
+  movieId
+  author
+  title
+  body
+}
+
+class Show {
+  showId
+  movieId
+  showroomId
+  startTime
+  duration
+}
+
+class Showroom {
+  showroomId
+  showroomName
+}
+
+class Seat {
+  seatId
+  showroomId
+  rowLabel
+  seatNumber
+}
+
+class User {
+  userId
+  firstName
+  lastName
+  email
+  phoneNumber
+  passwordHash
+}
+
+class Customer {
+  promotionOptIn
+  status : CustomerStatus
+}
+
+enum CustomerStatus {
+  Active
+  Inactive
+  Suspended
+}
+
+class Admin {
+}
+
+class Address {
+  addressId
+  userId
+  street
+  city
+  state
+  zipCode
+}
+
+class PaymentCard {
+  cardId
+  userId
+  cardNumber
+  expirationDate
+  billingAddress
+}
+
+class Ticket {
+  ticketId
+  type : TicketType
+  bookingId
+  seatId
+}
+
+enum TicketType {
+  Adult
+  Senior
+  Child
+}
+
+class TicketPrice {
+  type : TicketType
+  price
+}
+
+class Booking {
+  bookingId
+  userId
+  cardId
+  showId
+  bookingTime
+  promotionId
+  paymentReference
+}
+
+class BookingFee {
+  feeId
+  amount
+  isActive
+}
+
+class Promotion {
+  promotionId
+  code
+  description
+  discountType
+  discountValue
+  expirationDate
+}
+
+User <|-- Customer
+User <|-- Admin
+
+Customer "1" -- "*" Booking : books
+Booking "1" *-- "*" Ticket : contains
+Booking "*" -- "1" Show : is for
+
+Movie "1" -- "*" MovieContributor : has
+Customer "*" -- "*" Movie : favorites
+(Customer, Movie) .. FavoriteMovie
+
+Customer "1" -- "*" Recommendation : receives
+Recommendation "*" -- "*" Movie : suggests
+
+Customer "1" -- "0..3" PaymentCard : stores
+Customer "1" -- "0..1" Address : provides
+
+Showroom "1" *-- "*" Seat : contains
+Movie "1" -- "*" Review : has
+Showroom "1" -- "*" Show : hosts
+Movie "1" -- "*" Show : has
+
+Ticket "*" -- "1" Seat : reserves
+Booking "*" -- "0..1" Promotion : uses
+BookingFee "1" -- "*" Booking : determines fee for
+TicketPrice "1" -- "*" Ticket : determines price for
+
+@enduml

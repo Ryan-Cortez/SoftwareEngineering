@@ -1,54 +1,37 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import MovieCard from "../components/MovieCard";
-//import { getMovies } from "../api/cinemaApi";
+import { getMovies } from "../api/cinemaApi";
 import type { Movie, MovieStatus } from "../api/cinemaApi";
-import { MOCK_MOVIES } from "../components/mockMovies";
 import MainCard from "../components/MainCard";
 
 export default function Home() {
   const [status, setStatus] = useState<MovieStatus>("CURRENTLY_RUNNING");
   const [search, setSearch] = useState("");
-  // const [movies, setMovies] = useState<Movie[]>([]);
-  const [movies, setMovies] = useState(MOCK_MOVIES);
+  const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // useEffect(() => {
-  //   let cancelled = false;
-
-  //   async function load() {
-  //     setLoading(true);
-  //     setError(null);
-  //     try {
-  //       const data = await getMovies(search.trim() || "", "", "");
-  //       const filtered = data.filter((m) => m.status === status);
-  //       if (!cancelled) setMovies(filtered);
-  //     } catch (e) {
-  //       if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
-  //     } finally {
-  //       if (!cancelled) setLoading(false);
-  //     }
-  //   }
-
-
-
-  //   load();
-  //   return () => {
-  //     cancelled = true;
-  //   };
-  // }, [status, search]);
-
   useEffect(() => {
-    // 👇 replace API fetching with client-side filtering
-    const filtered = MOCK_MOVIES.filter((m) => {
-      const matchesStatus = m.status === status;
-      const matchesSearch =
-        !search.trim() || m.title.toLowerCase().includes(search.trim().toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
+    let cancelled = false;
 
-    setMovies(filtered);
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getMovies(search.trim() || "", "", "");
+        const filtered = data.filter((m) => m.status === status);
+        if (!cancelled) setMovies(filtered);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [status, search]);
 
   const title = useMemo(

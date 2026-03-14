@@ -11,7 +11,7 @@ export default function MainCard({ movie,}: Props) {
         <button
         type="button"
         className="movie-card"
-        onClick={() => navigate(`/movies/$z{movie:id}`)}
+        onClick={() => navigate(`/movies/${movie.id}`)}
         >
         <img
             className="movie-card__poster"

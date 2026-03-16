@@ -23,6 +23,7 @@ class FavoriteMovie {
 
 class Recommendation {
   generatedOn
+  +generateForCustomer(customer : Customer)
 }
 
 class Review {
@@ -39,6 +40,7 @@ class Show {
   showroomId
   startTime
   duration
+  +getAvailableSeats()
 }
 
 class Showroom {
@@ -65,6 +67,10 @@ class User {
 class Customer {
   promotionOptIn
   status : CustomerStatus
+  +addFavorite(movie : Movie)
+  +removeFavorite(movie : Movie)
+  +createBooking(show : Show)
+  +viewRecommendations()
 }
 
 enum CustomerStatus {
@@ -74,6 +80,10 @@ enum CustomerStatus {
 }
 
 class Admin {
+  +addMovie(movie : Movie)
+  +updateMovie(movie : Movie)
+  +suspendCustomer(customer : Customer)
+  +setTicketPrice(type : TicketType, price : double)
 }
 
 class Address {
@@ -119,6 +129,10 @@ class Booking {
   bookingTime
   promotionId
   paymentReference
+  +addTicket(seat: Seat, type : TicketType)
+  +applyPromotion(code : String)
+  +calculateTotal()
+  +confirmBooking()
 }
 
 class BookingFee {

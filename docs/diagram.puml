@@ -43,6 +43,12 @@ class Show {
   +getAvailableSeats()
 }
 
+class Theatre {
+  theatreID
+  name
+  location
+}
+
 class Showroom {
   showroomId
   showroomName
@@ -167,6 +173,7 @@ Recommendation "*" -- "*" Movie : suggests
 Customer "1" -- "0..3" PaymentCard : stores
 Customer "1" -- "0..1" Address : provides
 
+Theatre "1" -- "*" Showroom
 Showroom "1" *-- "*" Seat : contains
 Movie "1" -- "*" Review : has
 Showroom "1" -- "*" Show : hosts

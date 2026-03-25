@@ -21,7 +21,6 @@ DROP TABLE IF EXISTS `movie_contributor`;
 DROP TABLE IF EXISTS `seat`;
 DROP TABLE IF EXISTS `show`;
 DROP TABLE IF EXISTS `showroom`;
-DROP TABLE IF EXISTS `theatre`;
 DROP TABLE IF EXISTS `customer`;
 DROP TABLE IF EXISTS `admin`;
 DROP TABLE IF EXISTS `user`;
@@ -33,7 +32,7 @@ CREATE TABLE `movie` (
   `movie_id` INT AUTO_INCREMENT PRIMARY KEY,
   `title` VARCHAR(255) NOT NULL,
   `genre` VARCHAR(100) NOT NULL,
-  `status` ENUM('NowShowing', 'ComingSoon', 'Archived') NOT NULL,
+  `status` ENUM('CURRENTLY_RUNNING', 'COMING_SOON', 'ARCHIVED') NOT NULL,
   `synopsis` TEXT,
   `trailer_image_url` VARCHAR(255),
   `trailer_video_url` VARCHAR(255),
@@ -50,6 +49,7 @@ CREATE TABLE `user` (
   `email` VARCHAR(255) NOT NULL,
   `phone_number` VARCHAR(25),
   `password_hash` VARCHAR(255) NOT NULL,
+  `status` ENUM('Active', 'Inactive', 'Suspended') NOT NULL DEFAULT 'Active',
   CONSTRAINT `uq_user_email` UNIQUE (`email`),
   CONSTRAINT `uq_user_phone_number` UNIQUE (`phone_number`)
 ) ENGINE=InnoDB;
@@ -57,34 +57,22 @@ CREATE TABLE `user` (
 CREATE TABLE `customer` (
   `customer_id` INT PRIMARY KEY,
   `promotion_opt_in` BOOLEAN NOT NULL DEFAULT FALSE,
-  `status` ENUM('Active', 'Inactive', 'Suspended') NOT NULL DEFAULT 'Active',
   CONSTRAINT `fk_customer_user`
     FOREIGN KEY (`customer_id`) REFERENCES `user`(`user_id`)
-    ON DELETE CASCADE
+    ON DELETE CASCADE -- if a user is deleted, and that user was a customer, their customer account is deleted
 ) ENGINE=InnoDB;
 
 CREATE TABLE `admin` (
   `admin_id` INT PRIMARY KEY,
   CONSTRAINT `fk_admin_user`
     FOREIGN KEY (`admin_id`) REFERENCES `user`(`user_id`)
-    ON DELETE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE `theatre` (
-  `theatre_id` INT AUTO_INCREMENT PRIMARY KEY,
-  `name` VARCHAR(150) NOT NULL,
-  `location` VARCHAR(255) NOT NULL
+    ON DELETE CASCADE -- if a user is deleted, and that user was an admin, their admin account is deleted
 ) ENGINE=InnoDB;
 
 CREATE TABLE `showroom` (
   `showroom_id` INT AUTO_INCREMENT PRIMARY KEY,
-  `theatre_id` INT NOT NULL,
   `showroom_name` VARCHAR(50) NOT NULL,
-  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
-  CONSTRAINT `fk_showroom_theatre`
-    FOREIGN KEY (`theatre_id`) REFERENCES `theatre`(`theatre_id`)
-    ON DELETE CASCADE, -- deleting a theatre deletes showrooms in the theatre
-  CONSTRAINT `uq_showroom_name_per_theatre` UNIQUE (`theatre_id`, `showroom_name`)
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
 CREATE TABLE `show` (
@@ -95,14 +83,15 @@ CREATE TABLE `show` (
   `duration` INT NOT NULL,
   CONSTRAINT `fk_show_movie`
     FOREIGN KEY (`movie_id`) REFERENCES `movie`(`movie_id`)
-    ON DELETE RESTRICT, -- cannot delete a movie if shows reference it
+    ON DELETE RESTRICT, -- cannot delete a movie if a show references it
   CONSTRAINT `fk_show_showroom`
     FOREIGN KEY (`showroom_id`) REFERENCES `showroom`(`showroom_id`)
-    ON DELETE RESTRICT, -- cannot delete a showroom if shows reference it
+    ON DELETE RESTRICT, -- cannot delete a showroom if a show references it
   CONSTRAINT `chk_show_duration_positive` CHECK (`duration` > 0),
   CONSTRAINT `uq_showroom_start_time` UNIQUE (`showroom_id`, `start_time`),
   INDEX `idx_show_movie` (`movie_id`),
-  INDEX `idx_show_start_time` (`start_time`)
+  INDEX `idx_show_start_time` (`start_time`),
+  CONSTRAINT `uq_show_showroom` UNIQUE (`show_id`, `showroom_id`)
 ) ENGINE=InnoDB;
 -- the `status` attributes in movie and `is_active` in showroom table allow for archiving a 
 -- movie and decommissioning a showroom without actually deleting it from db
@@ -114,8 +103,9 @@ CREATE TABLE `seat` (
   `seat_number` INT NOT NULL,
   CONSTRAINT `fk_seat_showroom`
     FOREIGN KEY (`showroom_id`) REFERENCES `showroom`(`showroom_id`)
-    ON DELETE CASCADE, -- deleting a showroom deletes all seats in it
-  CONSTRAINT `uq_seat_in_showroom` UNIQUE (`showroom_id`, `row_label`, `seat_number`)
+    ON DELETE RESTRICT, 
+  CONSTRAINT `uq_seat_in_showroom` UNIQUE (`showroom_id`, `row_label`, `seat_number`),
+  CONSTRAINT `uq_seat_showroom_pair` UNIQUE (`seat_id`, `showroom_id`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `movie_contributor` (
@@ -126,7 +116,7 @@ CREATE TABLE `movie_contributor` (
   CONSTRAINT `fk_movie_contributor_movie`
     FOREIGN KEY (`movie_id`) REFERENCES `movie`(`movie_id`)
     ON DELETE CASCADE -- deleting a movie deletes all of its movie contributors
-) ENGINE=InnoDB;
+) ENGINE=InnoDB; -- a person CAN have multiple roles in the same movie (e.g. someone is an actor AND a producer)
 
 CREATE TABLE `review` (
   `review_id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -136,102 +126,124 @@ CREATE TABLE `review` (
   `body` TEXT NOT NULL,
   CONSTRAINT `fk_review_movie`
     FOREIGN KEY (`movie_id`) REFERENCES `movie`(`movie_id`)
-    ON DELETE CASCADE,
+    ON DELETE CASCADE, -- deleting a movie deletes all of that movie's reviews
   INDEX `idx_review_movie` (`movie_id`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `address` (
   `address_id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NOT NULL,
+  `customer_id` INT NOT NULL,
   `street` VARCHAR(255) NOT NULL,
   `city` VARCHAR(100) NOT NULL,
   `state` VARCHAR(100) NOT NULL,
   `zip_code` VARCHAR(20) NOT NULL,
-  CONSTRAINT `fk_address_user`
-    FOREIGN KEY (`user_id`) REFERENCES `customer`(`customer_id`)
-    ON DELETE CASCADE, -- deleting a user deletes their address if they were a customer
-  CONSTRAINT `uq_address_user` UNIQUE (`user_id`)
+  CONSTRAINT `fk_address_customer`
+    FOREIGN KEY (`customer_id`) REFERENCES `customer`(`customer_id`)
+    ON DELETE CASCADE, -- deleting a customer deletes their address
+  CONSTRAINT `uq_address_customer` UNIQUE (`customer_id`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `payment_card` (
   `card_id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NOT NULL,
+  `customer_id` INT NOT NULL,
   `card_number` VARCHAR(25) NOT NULL,
-  `expiration_date` VARCHAR(10) NOT NULL,
+  `expiration_date` DATE NOT NULL,
   `billing_address` VARCHAR(255),
   `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
   CONSTRAINT `fk_payment_card_customer`
-    FOREIGN KEY (`user_id`) REFERENCES `customer`(`customer_id`)
-    ON DELETE CASCADE, -- deleting a user deletes their cards if they were a customer
-  INDEX `idx_payment_card_user` (`user_id`)
+    FOREIGN KEY (`customer_id`) REFERENCES `customer`(`customer_id`)
+    ON DELETE CASCADE, -- deleting a customer deletes their cards
+  INDEX `idx_payment_card_customer` (`customer_id`),
+  CONSTRAINT `uq_payment_card_card_customer` UNIQUE (card_id, customer_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `promotion` (
   `promotion_id` INT AUTO_INCREMENT PRIMARY KEY,
   `code` VARCHAR(50) NOT NULL,
   `description` TEXT,
-  `discount_type` VARCHAR(30) NOT NULL,
+  `discount_type` ENUM('Percent', 'Amount') NOT NULL DEFAULT 'Percent',
   `discount_value` DECIMAL(10,2) NOT NULL,
   `expiration_date` DATETIME NOT NULL,
-  CONSTRAINT `uq_promotion_code` UNIQUE (`code`) -- promo codes must be unique
+  CONSTRAINT `uq_promotion_code` UNIQUE (`code`), -- promo codes must be unique
+  CONSTRAINT `chk_discount_value_nonnegative` CHECK (`discount_value` >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `booking_fee` (
   `fee_id` INT AUTO_INCREMENT PRIMARY KEY,
   `amount` DECIMAL(10,2) NOT NULL,
-  `is_active` BOOLEAN NOT NULL DEFAULT TRUE
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  CONSTRAINT `chk_amount_nonnegative` CHECK (`amount` >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `booking` (
   `booking_id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NOT NULL,
+  `customer_id` INT NOT NULL,
   `card_id` INT NOT NULL,
   `show_id` INT NOT NULL,
   `booking_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `promotion_id` INT,
   `fee_id` INT NOT NULL,
+  `booking_fee_amount` DECIMAL(10,2) NOT NULL,
+  `promotion_discount_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `total_amount` DECIMAL(10,2) NOT NULL,
   `payment_reference` VARCHAR(100),
   CONSTRAINT `fk_booking_customer`
-    FOREIGN KEY (`user_id`) REFERENCES `customer`(`customer_id`)
-    ON DELETE RESTRICT,
-  CONSTRAINT `fk_booking_card`
-    FOREIGN KEY (`card_id`) REFERENCES `payment_card`(`card_id`)
-    ON DELETE RESTRICT,
+    FOREIGN KEY (`customer_id`) REFERENCES `customer`(`customer_id`)
+    ON DELETE RESTRICT, -- deleting a customer cannot be done if that customer has a booking
+  CONSTRAINT `fk_booking_card_owner`
+    FOREIGN KEY (`card_id`, `customer_id`)
+    REFERENCES payment_card(`card_id`, `customer_id`)
+    ON DELETE RESTRICT, -- deleting a payment card cannot be done if that card was used in a booking
   CONSTRAINT `fk_booking_show`
     FOREIGN KEY (`show_id`) REFERENCES `show`(`show_id`)
-    ON DELETE RESTRICT,
+    ON DELETE RESTRICT, -- deleting a show cannot be done if that show had a booking
   CONSTRAINT `fk_booking_promotion`
     FOREIGN KEY (`promotion_id`) REFERENCES `promotion`(`promotion_id`)
-    ON DELETE SET NULL,
+    ON DELETE RESTRICT, -- deleting a promotion cannot be done if that promotion was used in a booking
   CONSTRAINT `fk_booking_fee`
     FOREIGN KEY (`fee_id`) REFERENCES `booking_fee`(`fee_id`)
-    ON DELETE RESTRICT,
-  INDEX `idx_booking_user` (`user_id`),
-  INDEX `idx_booking_show` (`show_id`)
+    ON DELETE RESTRICT, -- deleting a booking fee cannot be done if that booking fee was used in a booking
+  INDEX `idx_booking_customer` (`customer_id`),
+  INDEX `idx_booking_show` (`show_id`),
+  CONSTRAINT `uq_booking_booking_show` UNIQUE (`booking_id`, `show_id`),
+  CONSTRAINT `chk_booking_fee_amount_nonnegative` CHECK (`booking_fee_amount` >= 0),
+  CONSTRAINT `chk_promotion_discount_amount_nonnegative` CHECK (`promotion_discount_amount` >= 0),
+  CONSTRAINT `chk_total_amount_nonnegative` CHECK (`total_amount` >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `ticket_price` (
   `type` ENUM('Adult', 'Senior', 'Child') PRIMARY KEY,
-  `price` DECIMAL(10,2) NOT NULL
+  `price` DECIMAL(10,2) NOT NULL,
+  CONSTRAINT `chk_price_nonnegative` CHECK (`price` >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `ticket` (
   `ticket_id` INT AUTO_INCREMENT PRIMARY KEY,
   `type` ENUM('Adult', 'Senior', 'Child') NOT NULL,
+  `unit_price` DECIMAL(10,2) NOT NULL,
   `booking_id` INT NOT NULL,
   `seat_id` INT NOT NULL,
-  CONSTRAINT `fk_ticket_booking`
-    FOREIGN KEY (`booking_id`) REFERENCES `booking`(`booking_id`)
+  `show_id` INT NOT NULL,
+  `showroom_id` INT NOT NULL,
+  CONSTRAINT `fk_ticket_booking_show`
+    FOREIGN KEY (`booking_id`, `show_id`)
+    REFERENCES `booking`(`booking_id`, `show_id`)
     ON DELETE CASCADE, -- deleting a booking deletes all tickets in the booking
-  CONSTRAINT `fk_ticket_seat`
-    FOREIGN KEY (`seat_id`) REFERENCES `seat`(`seat_id`)
-    ON DELETE RESTRICT,
   CONSTRAINT `fk_ticket_price`
     FOREIGN KEY (`type`) REFERENCES `ticket_price`(`type`)
-    ON DELETE RESTRICT,
+    ON DELETE RESTRICT, -- deleting a ticket price category cannot be done if it has been used for a ticket
+  CONSTRAINT `fk_ticket_show_showroom`
+    FOREIGN KEY (`show_id`, `showroom_id`)
+    REFERENCES `show`(`show_id`, `showroom_id`)
+    ON DELETE RESTRICT, -- deleting a show cannot be done if a ticket references that show 
+  CONSTRAINT `fk_ticket_seat_showroom`
+    FOREIGN KEY (`seat_id`, `showroom_id`)
+    REFERENCES `seat`(`seat_id`, `showroom_id`)
+    ON DELETE RESTRICT, -- deleting a seat cannot be done if a ticket references that seat
   INDEX `idx_ticket_booking` (`booking_id`),
   INDEX `idx_ticket_seat` (`seat_id`),
-  CONSTRAINT `uq_ticket_booking_seat` UNIQUE (`booking_id`, `seat_id`)
+  CONSTRAINT `uq_ticket_show_seat` UNIQUE (`show_id`, `seat_id`),
+  CONSTRAINT `chk_unit_price_nonnegative` CHECK (`unit_price` >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `favorite_movie` (

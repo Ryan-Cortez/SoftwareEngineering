@@ -1,7 +1,7 @@
-INSERT INTO hall (hall_name) VALUES
-('Hall 1'), ('Hall 2'), ('Hall 3');
+INSERT INTO `showroom` (`showroom_name`) VALUES
+('Showroom 1'), ('Showroom 2'), ('Showroom 3');
 
-INSERT INTO movie (title, genre, status, synopsis, trailer_image_url, trailer_video_url, mpaa_rating) VALUES
+INSERT INTO `movie` (`title`, `genre`, `status`, `synopsis`, `trailer_image_url`, `trailer_video_url`, `mpaa_rating`) VALUES
 
 -- =====================
 -- CRIME (5)

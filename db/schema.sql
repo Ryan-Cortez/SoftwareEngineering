@@ -1,8 +1,16 @@
--- Notes --
--- Admin cannot actually delete movies. They can only move them to archived.
--- This is due to the movie -> show relationship. We do not want a long history
--- of show info being deleted because customers must always be able to view
--- their order history.
+/*
+HOW TO USE THE DATABASE
+
+- Do not rely on hard deletions to be available for most tables. For example, when I movie is no longer being shown, we do not actually want to delete it from the
+  database. This is why I have included 'ARCHIVED' as an ENUM option in the movie table. Why don't we want to delete movies? Because other tables reference the
+  movies in the movie table. If the theatre is showing "The Godfather" for a month, there is show data that will reference it and there are bookings that will reference
+  it. If we were to delete "The Godfather" from the database when it is done being shown, we will also have historical show data and booking data that would have a null
+  reference to a movie. We don't want to erase historical data like that. Whenever we don't want a movie to be shown on the site anymore, change its `status` to
+  'ARCHIVED'. Whenever pulling movies to display on the site, make sure their status is not 'ARCHIVED'. This same logic holds for deleting users. We don't want to delete
+  users because then we will lose historical data involving bookings, payment cards, addresses, and anything else directly related to a user. There are 'Inactive' and 
+  'Suspended' options in the user table to delete a user without actually deleting anything.
+
+*/
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -33,13 +41,15 @@ CREATE TABLE `movie` (
   `title` VARCHAR(255) NOT NULL,
   `genre` VARCHAR(100) NOT NULL,
   `status` ENUM('CURRENTLY_RUNNING', 'COMING_SOON', 'ARCHIVED') NOT NULL,
+  `runtime` INT NOT NULL,
   `synopsis` TEXT,
   `trailer_image_url` VARCHAR(255),
   `trailer_video_url` VARCHAR(255),
   `mpaa_rating` VARCHAR(10),
   INDEX `idx_movie_title` (`title`),
   INDEX `idx_movie_genre` (`genre`),
-  INDEX `idx_movie_status` (`status`)
+  INDEX `idx_movie_status` (`status`),
+  CONSTRAINT `chk_runtime_positive` CHECK (`runtime` > 0) -- movie runtime must be positive
 ) ENGINE=InnoDB;
 
 CREATE TABLE `user` (
@@ -49,9 +59,10 @@ CREATE TABLE `user` (
   `email` VARCHAR(255) NOT NULL,
   `phone_number` VARCHAR(25),
   `password_hash` VARCHAR(255) NOT NULL,
+  `is_verified` BOOLEAN NOT NULL DEFAULT FALSE,
   `status` ENUM('Active', 'Inactive', 'Suspended') NOT NULL DEFAULT 'Active',
-  CONSTRAINT `uq_user_email` UNIQUE (`email`),
-  CONSTRAINT `uq_user_phone_number` UNIQUE (`phone_number`)
+  CONSTRAINT `uq_user_email` UNIQUE (`email`), -- email addresses must be unique
+  CONSTRAINT `uq_user_phone_number` UNIQUE (`phone_number`) -- phone numbers must be unique
 ) ENGINE=InnoDB;
 
 CREATE TABLE `customer` (
@@ -80,21 +91,17 @@ CREATE TABLE `show` (
   `movie_id` INT NOT NULL,
   `showroom_id` INT NOT NULL,
   `start_time` DATETIME NOT NULL,
-  `duration` INT NOT NULL,
   CONSTRAINT `fk_show_movie`
     FOREIGN KEY (`movie_id`) REFERENCES `movie`(`movie_id`)
     ON DELETE RESTRICT, -- cannot delete a movie if a show references it
   CONSTRAINT `fk_show_showroom`
     FOREIGN KEY (`showroom_id`) REFERENCES `showroom`(`showroom_id`)
     ON DELETE RESTRICT, -- cannot delete a showroom if a show references it
-  CONSTRAINT `chk_show_duration_positive` CHECK (`duration` > 0),
-  CONSTRAINT `uq_showroom_start_time` UNIQUE (`showroom_id`, `start_time`),
+  CONSTRAINT `uq_showroom_start_time` UNIQUE (`showroom_id`, `start_time`), -- there can only be one show starting in a specific showroom at a time
   INDEX `idx_show_movie` (`movie_id`),
   INDEX `idx_show_start_time` (`start_time`),
-  CONSTRAINT `uq_show_showroom` UNIQUE (`show_id`, `showroom_id`)
+  CONSTRAINT `uq_show_showroom` UNIQUE (`show_id`, `showroom_id`) -- a specific show can only be in one showroom
 ) ENGINE=InnoDB;
--- the `status` attributes in movie and `is_active` in showroom table allow for archiving a 
--- movie and decommissioning a showroom without actually deleting it from db
 
 CREATE TABLE `seat` (
   `seat_id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -104,8 +111,8 @@ CREATE TABLE `seat` (
   CONSTRAINT `fk_seat_showroom`
     FOREIGN KEY (`showroom_id`) REFERENCES `showroom`(`showroom_id`)
     ON DELETE RESTRICT, 
-  CONSTRAINT `uq_seat_in_showroom` UNIQUE (`showroom_id`, `row_label`, `seat_number`),
-  CONSTRAINT `uq_seat_showroom_pair` UNIQUE (`seat_id`, `showroom_id`)
+  CONSTRAINT `uq_seat_in_showroom` UNIQUE (`showroom_id`, `row_label`, `seat_number`), -- each showroom can only have one seat with a specific row label and seat number (no duplicates)
+  CONSTRAINT `uq_seat_showroom_pair` UNIQUE (`seat_id`, `showroom_id`) -- each seat can only exist in one showroom
 ) ENGINE=InnoDB;
 
 CREATE TABLE `movie_contributor` (
@@ -140,7 +147,7 @@ CREATE TABLE `address` (
   CONSTRAINT `fk_address_customer`
     FOREIGN KEY (`customer_id`) REFERENCES `customer`(`customer_id`)
     ON DELETE CASCADE, -- deleting a customer deletes their address
-  CONSTRAINT `uq_address_customer` UNIQUE (`customer_id`)
+  CONSTRAINT `uq_address_customer` UNIQUE (`customer_id`) -- a customer can only store one address
 ) ENGINE=InnoDB;
 
 CREATE TABLE `payment_card` (
@@ -148,13 +155,17 @@ CREATE TABLE `payment_card` (
   `customer_id` INT NOT NULL,
   `card_number` VARCHAR(25) NOT NULL,
   `expiration_date` DATE NOT NULL,
-  `billing_address` VARCHAR(255),
+  `billing_street` VARCHAR (100) NOT NULL,
+  `billing_city` VARCHAR (100) NOT NULL,
+  `billing_state`VARCHAR (2) NOT NULL, -- state initials (e.g. GA, FL, CA)
+  `billing_zip_code` VARCHAR (20) NOT NULL,
+  `billing_apt` VARCHAR (100), -- not required
   `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
   CONSTRAINT `fk_payment_card_customer`
     FOREIGN KEY (`customer_id`) REFERENCES `customer`(`customer_id`)
     ON DELETE CASCADE, -- deleting a customer deletes their cards
   INDEX `idx_payment_card_customer` (`customer_id`),
-  CONSTRAINT `uq_payment_card_card_customer` UNIQUE (card_id, customer_id)
+  CONSTRAINT `uq_payment_card_card_customer` UNIQUE (card_id, customer_id) -- a card is only tied to one customer
 ) ENGINE=InnoDB;
 
 CREATE TABLE `promotion` (
@@ -165,14 +176,14 @@ CREATE TABLE `promotion` (
   `discount_value` DECIMAL(10,2) NOT NULL,
   `expiration_date` DATETIME NOT NULL,
   CONSTRAINT `uq_promotion_code` UNIQUE (`code`), -- promo codes must be unique
-  CONSTRAINT `chk_discount_value_nonnegative` CHECK (`discount_value` >= 0)
+  CONSTRAINT `chk_discount_value_nonnegative` CHECK (`discount_value` >= 0) -- the discount value must be nonnegative
 ) ENGINE=InnoDB;
 
 CREATE TABLE `booking_fee` (
   `fee_id` INT AUTO_INCREMENT PRIMARY KEY,
   `amount` DECIMAL(10,2) NOT NULL,
   `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
-  CONSTRAINT `chk_amount_nonnegative` CHECK (`amount` >= 0)
+  CONSTRAINT `chk_amount_nonnegative` CHECK (`amount` >= 0) -- the booking fee amount must be nonnegative
 ) ENGINE=InnoDB;
 
 CREATE TABLE `booking` (
@@ -184,7 +195,7 @@ CREATE TABLE `booking` (
   `promotion_id` INT,
   `fee_id` INT NOT NULL,
   `booking_fee_amount` DECIMAL(10,2) NOT NULL,
-  `promotion_discount_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `promotion_discount_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00, -- this is meant for the actual dollar amount that was discounted from the purchase
   `total_amount` DECIMAL(10,2) NOT NULL,
   `payment_reference` VARCHAR(100),
   CONSTRAINT `fk_booking_customer`
@@ -205,22 +216,23 @@ CREATE TABLE `booking` (
     ON DELETE RESTRICT, -- deleting a booking fee cannot be done if that booking fee was used in a booking
   INDEX `idx_booking_customer` (`customer_id`),
   INDEX `idx_booking_show` (`show_id`),
-  CONSTRAINT `uq_booking_booking_show` UNIQUE (`booking_id`, `show_id`),
-  CONSTRAINT `chk_booking_fee_amount_nonnegative` CHECK (`booking_fee_amount` >= 0),
-  CONSTRAINT `chk_promotion_discount_amount_nonnegative` CHECK (`promotion_discount_amount` >= 0),
-  CONSTRAINT `chk_total_amount_nonnegative` CHECK (`total_amount` >= 0)
+  CONSTRAINT `uq_booking_booking_show` UNIQUE (`booking_id`, `show_id`), -- a single booking can only involve one show
+  CONSTRAINT `chk_booking_fee_amount_nonnegative` CHECK (`booking_fee_amount` >= 0), -- the booking fee amount must be nonnegative
+  CONSTRAINT `chk_promotion_discount_amount_nonnegative` CHECK (`promotion_discount_amount` >= 0), -- the promotion discount amount must be nonnegative
+  CONSTRAINT `chk_total_amount_nonnegative` CHECK (`total_amount` >= 0) -- the total amount must be nonnegative
 ) ENGINE=InnoDB;
 
 CREATE TABLE `ticket_price` (
   `type` ENUM('Adult', 'Senior', 'Child') PRIMARY KEY,
   `price` DECIMAL(10,2) NOT NULL,
-  CONSTRAINT `chk_price_nonnegative` CHECK (`price` >= 0)
+  CONSTRAINT `chk_price_nonnegative` CHECK (`price` >= 0) -- the ticket price must be nonnegative
 ) ENGINE=InnoDB;
 
 CREATE TABLE `ticket` (
   `ticket_id` INT AUTO_INCREMENT PRIMARY KEY,
   `type` ENUM('Adult', 'Senior', 'Child') NOT NULL,
-  `unit_price` DECIMAL(10,2) NOT NULL,
+  `unit_price` DECIMAL(10,2) NOT NULL, -- the ticket’s stored base charged amount
+  -- ^ this is entirely determined by the ticket type, but it is here for historical purposes in case the ticket prices change 
   `booking_id` INT NOT NULL,
   `seat_id` INT NOT NULL,
   `show_id` INT NOT NULL,
@@ -242,8 +254,8 @@ CREATE TABLE `ticket` (
     ON DELETE RESTRICT, -- deleting a seat cannot be done if a ticket references that seat
   INDEX `idx_ticket_booking` (`booking_id`),
   INDEX `idx_ticket_seat` (`seat_id`),
-  CONSTRAINT `uq_ticket_show_seat` UNIQUE (`show_id`, `seat_id`),
-  CONSTRAINT `chk_unit_price_nonnegative` CHECK (`unit_price` >= 0)
+  CONSTRAINT `uq_ticket_show_seat` UNIQUE (`show_id`, `seat_id`), -- a single ticket can only reference one seat at one show
+  CONSTRAINT `chk_unit_price_nonnegative` CHECK (`unit_price` >= 0) -- the price to be paid for the ticket must be nonnegative
 ) ENGINE=InnoDB;
 
 CREATE TABLE `favorite_movie` (

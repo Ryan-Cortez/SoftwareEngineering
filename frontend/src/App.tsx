@@ -6,6 +6,9 @@ import MovieDetails from "./pages/MovieDetails";
 import BookingPage from "./pages/Booking";
 import SearchAndFilter from "./pages/SearchAndFilter"
 import Navbar from "./components/navbar";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import AdminPortal from "./pages/AdminPortal";
 
 export default function App() {
     return (
@@ -16,6 +19,9 @@ export default function App() {
                 <Route path="/movies/:id" element={<MovieDetails />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/admin" element={<AdminPortal />} />
                 <Route path="/search" element={<SearchAndFilter />} />
                 <Route path="/booking" element={<BookingPage />} />
             </Routes>

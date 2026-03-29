@@ -32,7 +32,11 @@ export default function Login() {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      navigate("/");
+      if (data.user.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/");
+      }
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -82,6 +86,10 @@ export default function Login() {
 
         <p className="auth-switch">
           Don&apos;t have an account? <Link to="/register">Register Here</Link>
+        </p>
+
+        <p className="auth-switch">
+          <Link to="/forgot-password">Forgot Password?</Link>
         </p>
       </div>
     </div>

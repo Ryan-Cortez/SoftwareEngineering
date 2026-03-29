@@ -1,32 +1,46 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          first_name: firstName,
+          Last_name: lastName,
+          email,
+          password,
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Login failed");
+        throw new Error(data.message || "Registration failed");
       }
 
       localStorage.setItem("token", data.token);
@@ -43,10 +57,32 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1 className="auth-title">Login</h1>
-        <p className="auth-subtitle">Sign in to book tickets and save favorites.</p>
+        <h1 className="auth-title">Register</h1>
+        <p className="auth-subtitle">Create an account to book movies and manage favorites.</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
+          <div className="auth-field">
+            <label>First Name</label>
+            <input
+              type="text"
+              required
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Enter your first name"
+            />
+          </div>
+
+          <div className="auth-field">
+            <label>Last Name</label>
+            <input
+              type="text"
+              required
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Enter your last name"
+            />
+          </div>
+
           <div className="auth-field">
             <label>Email</label>
             <input
@@ -65,14 +101,25 @@ export default function Login() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="Create a password"
+            />
+          </div>
+
+          <div className="auth-field">
+            <label>Confirm Password</label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm your password"
             />
           </div>
 
           {error && <p className="auth-error">{error}</p>}
 
           <button className="auth-button" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Creating account..." : "Register"}
           </button>
         </form>
 
@@ -81,7 +128,7 @@ export default function Login() {
         </div>
 
         <p className="auth-switch">
-          Don&apos;t have an account? <Link to="/register">Register Here</Link>
+          Already have an account? <Link to="/login">Login Here</Link>
         </p>
       </div>
     </div>

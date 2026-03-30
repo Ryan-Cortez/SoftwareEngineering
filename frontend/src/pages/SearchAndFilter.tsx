@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MainCard from "../components/MainCard";
 import { getMovies, type Movie } from "../api/cinemaApi";
+import { addFavorite, removeFavorite, getFavorites } from "../api/favorites"
 
 export default function Search() {
     const [movies, setMovies] = useState<Movie[]>([]);

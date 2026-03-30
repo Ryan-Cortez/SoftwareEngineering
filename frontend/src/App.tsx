@@ -9,6 +9,7 @@ import Navbar from "./components/navbar";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AdminPortal from "./pages/AdminPortal";
+import Profile from "./pages/Profile";
 
 export default function App() {
     return (
@@ -21,6 +22,7 @@ export default function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/admin" element={<AdminPortal />} />
                 <Route path="/search" element={<SearchAndFilter />} />
                 <Route path="/booking" element={<BookingPage />} />

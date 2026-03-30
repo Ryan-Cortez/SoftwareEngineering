@@ -19,16 +19,16 @@ export type MovieDetails = Movie & {
     showtimes: string[]; // time of day (hardcoded)
 }
 
-function normalizeMovie (raw: any): Movie {
-    return {
-        id: Number(raw.id ?? raw.movie_id),
+export function normalizeMovie (raw: any): Movie {
+  return {
+    id: Number(raw.id ?? raw.movie_id),
     title: raw.title ?? "",
-    genre: raw.genre ?? "",
+    genre: raw.genre ?? "",      
     status: (raw.status ?? "CURRENTLY_RUNNING") as MovieStatus,
     description: raw.description ?? raw.synopsis ?? "",
     posterUrl:
       raw.posterUrl ??
-      raw.poster_url ??
+      raw.poster_url ??        
       raw.trailer_image_url ??
       "",
     trailerUrl:
@@ -59,7 +59,7 @@ export async function getMovies( search: string = "", genre: string = "", showDa
     return Array.isArray(data) ? data.map(normalizeMovie) : [];
 } 
 
-export async function getMovieById(id: number): Promise<MovieDetails> {
+export async function getMovieById(id: number | string): Promise<MovieDetails> {
     const res = await fetch(`${API_BASE_URL}/api/movies/${id}`);
     if (!res.ok) throw new Error("Failed to load movie details");
     const raw = await res.json();

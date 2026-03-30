@@ -408,6 +408,13 @@ INSERT INTO `admin`
 VALUES
 (6);
 
+INSERT INTO `favorite_movie` 
+( `customer_id`, `movie_id`)
+VALUES
+(1, 1),
+(1, 2),
+(1, 3);
+
 INSERT INTO `show` (`movie_id`, `showroom_id`, `start_time`) VALUES
 -- 2026-03-27
 (1, 1, '2026-03-27 13:00:00'),

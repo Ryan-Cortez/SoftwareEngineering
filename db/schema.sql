@@ -153,11 +153,12 @@ CREATE TABLE `address` (
 CREATE TABLE `payment_card` (
   `card_id` INT AUTO_INCREMENT PRIMARY KEY,
   `customer_id` INT NOT NULL,
-  `card_number` VARCHAR(25) NOT NULL,
+  `card_number` VARCHAR(255) NOT NULL,
+  `last_four` CHAR(4) NOT NULL,
   `expiration_date` DATE NOT NULL,
   `billing_street` VARCHAR (100) NOT NULL,
   `billing_city` VARCHAR (100) NOT NULL,
-  `billing_state`VARCHAR (2) NOT NULL, -- state initials (e.g. GA, FL, CA)
+  `billing_state`CHAR (2) NOT NULL, -- state initials (e.g. GA, FL, CA)
   `billing_zip_code` VARCHAR (20) NOT NULL,
   `billing_apt` VARCHAR (100), -- not required
   `is_active` BOOLEAN NOT NULL DEFAULT TRUE,

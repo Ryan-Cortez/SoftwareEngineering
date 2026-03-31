@@ -23,7 +23,7 @@ export default function Profile() {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
         {
             id: 1,
-            cardHolderName: " Bob Janscott",
+            cardHolderName: " Bob Ross",
             cardNumber: " **** **** **** 1234",
             expiry: "01/28"
         },
@@ -205,7 +205,7 @@ export default function Profile() {
                                     value={profile.firstName} 
                                     onChange={handleChange} 
                                     required
-                                    style={{ width: "100px", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}} 
+                                    style={{ width: "250px", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}} 
                                 />
                             </div>
                             <div>
@@ -219,7 +219,7 @@ export default function Profile() {
                                     value={profile.lastName}
                                     onChange={handleChange}
                                     required
-                                    style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}}
+                                    style={{ width: "250px", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}}
                                 />
                             </div>
                             <div>
@@ -233,10 +233,9 @@ export default function Profile() {
                                 value={profile.email}
                                 disabled
                                 style={{
-                                    width: "100%",
+                                    width: "250px",
                                     padding: "10px",
                                     borderRadius: "8px",
-                                    border: "1px solid #ccc",
                                     backgroundColor: "#f5f5f5",
                                     color: "#666",
                                 }}
@@ -253,7 +252,7 @@ export default function Profile() {
                                 value={profile.phone}
                                 onChange={handleChange}
                                 style={{
-                                    width: "100%",
+                                    width: "250px",
                                     padding: "10px",
                                     borderRadius: "8px",
                                     border: "1px solid #ccc",
@@ -262,24 +261,24 @@ export default function Profile() {
                             </div>
                         </div>
                         <button type="submit" disabled={saving} 
-                            style={{ marginTop: "20px", padding: "10px 18px", border: "none", borderRadius: "8px", cursor: "pointer" }}>
+                            style={{ display: "block", margin: "0 auto", marginTop: "15px",border: "none", borderRadius: "8px"}}>
                                 {saving ? "Saving..." : "Save Changes"}
                             </button>
                     </form>
                 </section>
 
-                <section style={{ marginBottom: "32px" }}>
+                <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px",}}>
                     <h2 style={{ marginBottom: "16px"}}>Stored Payment Methods</h2>
 
                     {paymentError && <p>{paymentError}</p>}
                     {paymentMethods.length === 0 ? (
                         <p>No payment methods saved yet.</p>
                     ) : (
-                        <div>{paymentMethods.map((card) => (
-                            <div key={card.id} style={{border: "1px solid #ddd", borderRadius: "10px"}}>
-                                <p><strong>{card.cardHolderName}</strong></p>
+                        <div style={{ display: "flex", justifyContent: "center", marginBottom: "15px", alignItems: "center"}}>{paymentMethods.map((card) => (
+                            <div key={card.id} style={{border: "1px solid #ddd", borderRadius: "10px", padding: "20px"}}>
+                                <p><strong> {card.cardHolderName}</strong></p>
                                 <p>{card.cardNumber}</p>
-                                <p>Expires: {card.expiry}</p>
+                                <p> Expires: {card.expiry}</p>
 
                                 <button type="button" onClick={() => handleRemovePaymentMethod(card.id)}>Remove Card</button>
                             </div>
@@ -289,26 +288,27 @@ export default function Profile() {
 
                     <form onSubmit={handlAddPaymentMethod}>
                         <div>
-                            <label htmlFor="cardHolderName">Cardholder Name</label>
+                            <h4 style={{ marginBottom: "10px"}}>New Payment Method:</h4>
+                            <label htmlFor="cardHolderName">Cardholder Name:  </label>
                             <input id="cardHolderName" type="text" value={newCardHolderName} onChange={(e) => setNewCardHolderName(e.target.value)} 
                                 placeholder="Enter cardholder name"/>
                         </div>
 
                         <div>
-                            <label htmlFor="cardNumber">Card Number</label>
+                            <label htmlFor="cardNumber">Card Number:  </label>
                             <input id="cardNumber" type="text" value={newCardNumber} onChange={(e) => setNewCardNumber(formatCardNumber(e.target.value))}
                                 placeholder="1234 5678 9012 3456" />
                         </div>
 
                         <div>
-                            <label htmlFor="expiry">Expiration Date</label>
+                            <label htmlFor="expiry">Expiration Date:  </label>
                             <input id="expiry" type="text" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
                                 placeholder="MM/YY" /> 
                         </div>
 
-                        <button type="submit" disabled={paymentMethods.length >= 3}>Add Payment Method</button>
+                        <button style={{marginTop: "20px"}} type="submit" disabled={paymentMethods.length >= 3}>Add Payment Method</button>
                     </form>
-                    <p>You may store up to 3 payment cards</p>
+                    <p style={{ marginBottom: "5px"}}>You may store up to 3 payment cards</p>
                 </section>
                 <section style={{ border: "1fr solid #ddd", borderRadius: "12px", padding: "24px"}}>
                     <h2 style={{ marginTop: 0}}>Favorite Movies</h2>

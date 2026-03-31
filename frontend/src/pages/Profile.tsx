@@ -3,6 +3,13 @@ import { getProfile, updateProfile, type UserProfile } from "../api/profileApi";
 import { getFavorites, removeFavorite } from "../api/favorites";
 import type { Movie } from "../api/cinemaApi";
 
+type PaymentMethod = {
+    id: number;
+    cardHolderName: string;
+    cardNumber: string;
+    expiry: string;
+}
+
 export default function Profile() {
     const [profile, setProfile] = useState<UserProfile>({
         firstName: "",
@@ -13,6 +20,19 @@ export default function Profile() {
 
     const [favorites, setFavorites] = useState<Movie[]>([]);
 
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
+        {
+            id: 1,
+            cardHolderName: " Bob Janscott",
+            cardNumber: " **** **** **** 1234",
+            expiry: "01/28"
+        },
+    ]);
+
+    const [newCardHolderName, setNewCardHolderName] = useState("");
+    const [newCardNumber, setNewCardNumber] = useState("");
+    const [newExpiry, setNewExpiry] = useState("");
+
     const [loadingProfile, setLoadingProfile] = useState(true);
     const [loadingFavoites, setLoadingFavorites] = useState(true);
  
@@ -20,6 +40,7 @@ export default function Profile() {
 
     const [profileError, setProfileError] = useState("");
     const [favoritesError, setFavoritesError] = useState("");
+    const [paymentError, setPaymentError] = useState("");
     const [saveMessage, setSaveMessage] = useState("");
 
     useEffect(() => {
@@ -107,6 +128,55 @@ export default function Profile() {
         }
     }
 
+    function formatCardNumber(value: string) {
+        const digitsOnly = value.replace(/\D/g, "").slice(0, 16);
+        const groups = digitsOnly.match(/.{1,4}/g);
+        return groups ? groups.join(" ") : "";
+    }
+
+    function maskCardNumber(value: string) {
+        const digitsOnly = value.replace(/\D/g, "");
+        const lastFour = digitsOnly.slice(-4);
+        return `**** **** **** ${lastFour}`;
+    }
+
+    function handlAddPaymentMethod(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setPaymentError("");
+
+        if (paymentMethods.length >= 3) {
+            setPaymentError("You can store a maximum of 3 payment cards.");
+            return;
+        }
+
+        if (!newCardHolderName.trim() || !newCardNumber.trim() || !newExpiry.trim()) {
+            setPaymentError("Please complete all payment card fields.");
+            return;
+        }
+        const digitsOnly = newCardNumber.replace(/\D/g, "");
+        if (digitsOnly.length !== 16) {
+            setPaymentError("Card number must be 16 digits.");
+            return;
+        }
+
+        const newCard: PaymentMethod = {
+            id: Date.now(),
+            cardHolderName: newCardHolderName.trim(),
+            cardNumber: maskCardNumber(newCardNumber.trim()),
+            expiry: newExpiry.trim(),
+        };
+
+        setPaymentMethods((prev) => [...prev, newCard]);
+        setNewCardHolderName("");
+        setNewCardNumber("");
+        setNewExpiry("");
+    }
+
+    function handleRemovePaymentMethod(id: number) {
+        setPaymentMethods((prev) => prev.filter((card) => card.id !== id));
+        setPaymentError("");
+    }
+ 
     if (loadingProfile) {
         return <p style={{padding: "24px"}}>Loading Profile...</p>;
     }
@@ -118,17 +188,9 @@ export default function Profile() {
                 <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px",}}>
                     <h2 style={{ marginTop: 0 }}>Profile Information</h2>
 
-                    {profileError && (
-                        <p style={{ color: "crimson", marginBottom: "16px"}}>
-                            {profileError}
-                        </p>
-                    )}
+                    {profileError && <p style={{ color: "crimson", marginBottom: "16px"}}>{profileError}</p>}
 
-                    {saveMessage && (
-                        <p style={{ color: "green", marginBottom: "16px"}}>
-                            {saveMessage}
-                        </p>
-                    )}
+                    {saveMessage && <p style={{ color: "green", marginBottom: "16px"}}>{saveMessage}</p>}
 
                     <form onSubmit={handleSave}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px"}}>
@@ -205,6 +267,49 @@ export default function Profile() {
                             </button>
                     </form>
                 </section>
+
+                <section style={{ marginBottom: "32px" }}>
+                    <h2 style={{ marginBottom: "16px"}}>Stored Payment Methods</h2>
+
+                    {paymentError && <p>{paymentError}</p>}
+                    {paymentMethods.length === 0 ? (
+                        <p>No payment methods saved yet.</p>
+                    ) : (
+                        <div>{paymentMethods.map((card) => (
+                            <div key={card.id} style={{border: "1px solid #ddd", borderRadius: "10px"}}>
+                                <p><strong>{card.cardHolderName}</strong></p>
+                                <p>{card.cardNumber}</p>
+                                <p>Expires: {card.expiry}</p>
+
+                                <button type="button" onClick={() => handleRemovePaymentMethod(card.id)}>Remove Card</button>
+                            </div>
+                        ))}
+                        </div>
+                    )}
+
+                    <form onSubmit={handlAddPaymentMethod}>
+                        <div>
+                            <label htmlFor="cardHolderName">Cardholder Name</label>
+                            <input id="cardHolderName" type="text" value={newCardHolderName} onChange={(e) => setNewCardHolderName(e.target.value)} 
+                                placeholder="Enter cardholder name"/>
+                        </div>
+
+                        <div>
+                            <label htmlFor="cardNumber">Card Number</label>
+                            <input id="cardNumber" type="text" value={newCardNumber} onChange={(e) => setNewCardNumber(formatCardNumber(e.target.value))}
+                                placeholder="1234 5678 9012 3456" />
+                        </div>
+
+                        <div>
+                            <label htmlFor="expiry">Expiration Date</label>
+                            <input id="expiry" type="text" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
+                                placeholder="MM/YY" /> 
+                        </div>
+
+                        <button type="submit" disabled={paymentMethods.length >= 3}>Add Payment Method</button>
+                    </form>
+                    <p>You may store up to 3 payment cards</p>
+                </section>
                 <section style={{ border: "1fr solid #ddd", borderRadius: "12px", padding: "24px"}}>
                     <h2 style={{ marginTop: 0}}>Favorite Movies</h2>
                     {loadingFavoites && <p>Loading favorite movies...</p>}
@@ -239,7 +344,7 @@ export default function Profile() {
                                     <button
                                         type="button"
                                         onClick={() => handleRemoveFavorite(movie.id)}
-                                        style={{ padding: "8px 14px", border: "none", borderRadius: "8px", cursor: "pointer"}}>
+                                        style={{ padding: "8px 14px", border: "none", borderRadius: "8px"}}>
                                         Remove from Favorites
                                     </button>
                                 </div>

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const { token } = useParams<{ token: string }>();
 
-  const [email, setEmail] = useState(location.state?.email || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -17,6 +18,11 @@ export default function ResetPassword() {
     setMessage("");
     setError("");
 
+    if (!token) {
+      setError("Invalid reset link.");
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -25,14 +31,14 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch(`${API_BASE_URL}/api/reset-password/${encodeURIComponent(token)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
-          email,
-          new_password: newPassword,
+          password: newPassword,
         }),
       });
 
@@ -40,7 +46,7 @@ export default function ResetPassword() {
       const data = text ? JSON.parse(text) : {};
 
       if (!res.ok) {
-        throw new Error(data.message || "Password reset failed");
+        throw new Error(data.message || data.error || "Password reset failed");
       }
 
       setMessage(data.message || "Password successfully reset");
@@ -48,8 +54,8 @@ export default function ResetPassword() {
       setTimeout(() => {
         navigate("/login");
       }, 1200);
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -63,18 +69,6 @@ export default function ResetPassword() {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-field">
-            <label htmlFor="email">Email *</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-            />
-          </div>
-
-          <div className="auth-field">
             <label htmlFor="newPassword">New Password *</label>
             <input
               id="newPassword"
@@ -83,6 +77,7 @@ export default function ResetPassword() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Enter a new password"
+              minLength={8}
             />
           </div>
 
@@ -95,6 +90,7 @@ export default function ResetPassword() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your new password"
+              minLength={8}
             />
           </div>
 

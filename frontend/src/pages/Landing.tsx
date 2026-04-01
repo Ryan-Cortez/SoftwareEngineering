@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { getMovies } from "../api/cinemaApi";
 import type { Movie, MovieStatus } from "../api/cinemaApi";
@@ -6,7 +5,7 @@ import MainCard from "../components/MainCard";
 
 export default function Home() {
   const [status, setStatus] = useState<MovieStatus>("CURRENTLY_RUNNING");
-  const [search, setSearch] = useState("");
+  const search = "";
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

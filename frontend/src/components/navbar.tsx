@@ -1,9 +1,36 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
+function readUser(): { first_name?: string; last_name?: string; role?: string } | null {
+  try {
+    const raw = localStorage.getItem("user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function Navbar() {
+  const navigate = useNavigate();
+  const user = readUser();
+
+  async function handleLogout() {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // still clear client state
+    }
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    navigate("/");
+  }
+
   return (
     <nav className="site-navbar">
-      {/* Logo / brand placeholder */}
       <Link to="/" className="nav-logo" aria-label="Go to home">
         <div className="nav-logo__mark" />
         <span className="nav-logo__text">The Dawg House</span>
@@ -14,9 +41,25 @@ export default function Navbar() {
           Search
         </Link>
 
-        <Link to="/login" className="nav-btn nav-btn--primary">
-          Login
-        </Link>
+        {user ? (
+          <>
+            <Link to="/profile" className="nav-btn nav-btn--ghost">
+              Profile
+            </Link>
+            {user.role === "admin" && (
+              <Link to="/admin" className="nav-btn nav-btn--ghost">
+                Admin
+              </Link>
+            )}
+            <button type="button" className="nav-btn nav-btn--primary" onClick={handleLogout}>
+              Logout
+            </button>
+          </>
+        ) : (
+          <Link to="/login" className="nav-btn nav-btn--primary">
+            Login
+          </Link>
+        )}
       </div>
     </nav>
   );

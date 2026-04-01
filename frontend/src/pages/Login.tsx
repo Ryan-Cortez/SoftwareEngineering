@@ -1,8 +1,12 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const registered = (location.state as { registered?: boolean } | null)?.registered;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,18 +19,19 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Login failed");
+        throw new Error(data.message || data.error || "Login failed");
       }
 
       localStorage.setItem("token", data.token);
@@ -37,8 +42,8 @@ export default function Login() {
       } else {
         navigate("/");
       }
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -49,6 +54,12 @@ export default function Login() {
       <div className="auth-card">
         <h1 className="auth-title">Login</h1>
         <p className="auth-subtitle">Sign in to book tickets and save favorites.</p>
+
+        {registered && (
+          <p className="auth-success" style={{ marginBottom: "12px" }}>
+            Registration successful. Please check your email to verify your account before logging in.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-field">

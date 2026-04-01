@@ -1,6 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
 export default function Register() {
   const navigate = useNavigate();
 
@@ -9,6 +11,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [promotionOptIn, setPromotionOptIn] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,31 +27,29 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           first_name: firstName,
-          Last_name: lastName,
+          last_name: lastName,
           email,
           password,
+          promotion_opt_in: promotionOptIn,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Registration failed");
+        throw new Error(data.message || data.error || "Registration failed");
       }
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      navigate("/");
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      navigate("/login", { state: { registered: true } });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -114,6 +115,18 @@ export default function Register() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm your password"
             />
+          </div>
+
+          <div className="auth-field" style={{ flexDirection: "row", alignItems: "center", gap: "8px" }}>
+            <input
+              id="promo-opt-in"
+              type="checkbox"
+              checked={promotionOptIn}
+              onChange={(e) => setPromotionOptIn(e.target.checked)}
+            />
+            <label htmlFor="promo-opt-in" style={{ margin: 0 }}>
+              Email me promotions and special offers
+            </label>
           </div>
 
           {error && <p className="auth-error">{error}</p>}

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import MainCard from "../components/MainCard";
 import { getMovies, type Movie } from "../api/cinemaApi";
-import { addFavorite, removeFavorite, getFavorites } from "../api/favorites"
 
 export default function Search() {
     const [movies, setMovies] = useState<Movie[]>([]);
@@ -45,12 +44,6 @@ export default function Search() {
         const set = new Set(movies.map((m) => m.showDate).filter(Boolean));
         return Array.from(set).sort();
     }, [movies]);
-
-    const gridStyle: React.CSSProperties = {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill)",
-        gap: 16,
-    };
 
     const hasFilters = search.trim() || genre.trim() || showDate.trim();
 

@@ -387,33 +387,46 @@ INSERT INTO `booking_fee` (`amount`) VALUES (1.00);
 INSERT INTO `user`
 (`first_name`, `last_name`, `email`, `phone_number`, `password_hash`, `is_verified`, `status`)
 VALUES
-('Nate',   'Williams', 'nrw82335@uga.edu', '2294155266', 'hashed_password_example', TRUE,  'Active'),
+('Nate',   'Williams', 'nrw82335@uga.edu', '2294155266', '$2b$12$BTKkOUxLy7tqIPbvoa8syOhgtLyiAMISJhBAT2M2A4VpHz2Sck7vO', TRUE,  'Active'),
+('Caleb',  'Elder',    'cme13163@uga.edu', '7066127923', '$2b$12$AWrPv5KhR0CL5ANAxrfTDe8elZuIPjaErCtowFaEfyNqduryzu6ga', TRUE,  'Active');
+
+/*
 ('Karsen', 'Phillips', 'kap87953@uga.edu', '4045631098', 'hashed_password_example', TRUE,  'Active'),
 ('Ryan',   'Cortez',   'rmc57278@uga.edu', '7066313011', 'hashed_password_example', TRUE,  'Active'),
-('Caleb',  'Elder',    'cme13163@uga.edu', '7066127923', 'hashed_password_example', TRUE,  'Active'),
+
 ('Ritvik', 'Gaddam',   'rg04555@uga.edu',  '4705609088', 'hashed_password_example', TRUE,  'Active'),
 ('Jersey', 'Mike',     'naterwms@gmail.com', '1234567890', 'hashed_password_example', TRUE, 'Active');
+*/
 
 INSERT INTO `customer`
 (`customer_id`, `promotion_opt_in`)
 VALUES
-(1, TRUE),
-(2, TRUE),
-(3, TRUE),
-(4, TRUE),
-(5, TRUE);
+(2, TRUE);
 
 INSERT INTO `admin`
 (`admin_id`)
 VALUES
-(6);
+(1);
 
 INSERT INTO `favorite_movie` 
 ( `customer_id`, `movie_id`)
 VALUES
-(1, 1),
-(1, 2),
-(1, 3);
+(2, 1),
+(2, 2),
+(2, 3);
+
+INSERT INTO `payment_card`
+(`customer_id`, `card_number`, `last_four`, `expiration_date`,
+ `billing_street`, `billing_city`, `billing_state`, `billing_zip_code`, `billing_apt`)
+VALUES
+(2, 'encrypted_card_visa_1', '1234', '2027-05-01',
+ '123 Oak St', 'Athens', 'GA', '30605', NULL),
+
+(2, 'encrypted_card_mc_1', '5678', '2026-11-01',
+ '456 Pine Ave', 'Atlanta', 'GA', '30303', 'Apt 2B'),
+
+(2, 'encrypted_card_amex_1', '9012', '2028-08-01',
+ '789 Maple Dr', 'Savannah', 'GA', '31401', NULL);
 
 INSERT INTO `show` (`movie_id`, `showroom_id`, `start_time`) VALUES
 -- 2026-03-27

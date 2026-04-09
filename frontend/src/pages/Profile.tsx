@@ -3,6 +3,8 @@ import {
     getProfile,
     updateProfile,
     addPaymentCard,
+    getPaymentCard,
+    updatePaymentCard,
     deletePaymentCard,
     type UserProfile,
     type Address,
@@ -11,6 +13,35 @@ import { getFavorites, removeFavorite } from "../api/favorites";
 import type { Movie } from "../api/cinemaApi";
 
 const MAX_CARDS = 3;
+
+function formatMaskedCardDisplay(cardNumber: string): string {
+    const digits = (cardNumber || "").replace(/\D/g, "");
+    if (digits.length >= 4) return `${"*".repeat(12)}${digits.slice(-4)}`;
+    return "*".repeat(12);
+}
+
+function formatExpMMYY(isoDate: string): string {
+    // backend stores YYYY-MM-DD (date). Display should be MM/YY.
+    const s = (isoDate || "").trim();
+    if (s.length >= 7) {
+        const yyyy = s.slice(0, 4);
+        const mm = s.slice(5, 7);
+        if (/^\d{4}$/.test(yyyy) && /^\d{2}$/.test(mm)) return `${mm}/${yyyy.slice(2)}`;
+    }
+    return "";
+}
+
+function parseExpMMYYToISO(mmYY: string): string {
+    // Accept MM/YY or MMYY and convert to YYYY-MM-01 (backend accepts YYYY-MM-DD).
+    const raw = (mmYY || "").trim();
+    const m = raw.match(/^(\d{2})\s*\/?\s*(\d{2})$/);
+    if (!m) return "";
+    const mm = Number(m[1]);
+    const yy = Number(m[2]);
+    if (mm < 1 || mm > 12) return "";
+    const yyyy = 2000 + yy;
+    return `${String(yyyy)}-${String(mm).padStart(2, "0")}-01`;
+}
 
 export default function Profile() {
     const [profile, setProfile] = useState<UserProfile>({
@@ -37,7 +68,7 @@ export default function Profile() {
 
     const [newCard, setNewCard] = useState({
         card_number: "",
-        expiration_date: "",
+        expiration_mm_yy: "",
         billing_street: "",
         billing_city: "",
         billing_state: "",
@@ -49,6 +80,18 @@ export default function Profile() {
 
     const [saving, setSaving] = useState(false);
     const [cardSaving, setCardSaving] = useState(false);
+    const [editingCardId, setEditingCardId] = useState<number | null>(null);
+    const [editCard, setEditCard] = useState<{
+        card_number: string;
+        expiration_date: string;
+        billing_street: string;
+        billing_city: string;
+        billing_state: string;
+        billing_zip_code: string;
+        billing_apt?: string;
+    } | null>(null);
+    const [editCardSaving, setEditCardSaving] = useState(false);
+    const [editCardError, setEditCardError] = useState("");
 
     const [profileError, setProfileError] = useState("");
     const [favoritesError, setFavoritesError] = useState("");
@@ -180,9 +223,17 @@ export default function Profile() {
         try {
             setCardSaving(true);
             setProfileError("");
+            setSaveMessage("");
+
+            const expIso = parseExpMMYYToISO(newCard.expiration_mm_yy);
+            if (!expIso) {
+                setProfileError("Expiration must be MM/YY (example: 12/28).");
+                return;
+            }
+
             await addPaymentCard({
                 card_number: newCard.card_number.replace(/\s/g, ""),
-                expiration_date: newCard.expiration_date,
+                expiration_date: expIso,
                 billing_street: newCard.billing_street,
                 billing_city: newCard.billing_city,
                 billing_state: newCard.billing_state.slice(0, 2),
@@ -191,7 +242,7 @@ export default function Profile() {
             await reloadProfile();
             setNewCard({
                 card_number: "",
-                expiration_date: "",
+                expiration_mm_yy: "",
                 billing_street: "",
                 billing_city: "",
                 billing_state: "",
@@ -217,6 +268,57 @@ export default function Profile() {
             setProfileError(
                 error instanceof Error ? error.message : "Could not remove card."
             );
+        }
+    }
+
+    async function handleEditCard(cardId: number) {
+        try {
+            setEditCardError("");
+            setEditingCardId(cardId);
+            setEditCard(null);
+            const full = await getPaymentCard(cardId);
+            setEditCard({
+                card_number: full.card_number ?? "",
+                expiration_date: full.expiration_date ?? "",
+                billing_street: full.billing_street ?? "",
+                billing_city: full.billing_city ?? "",
+                billing_state: full.billing_state ?? "",
+                billing_zip_code: full.billing_zip_code ?? "",
+                billing_apt: full.billing_apt ?? "",
+            });
+        } catch (error) {
+            setEditCardError(error instanceof Error ? error.message : "Could not load card details.");
+            setEditingCardId(null);
+            setEditCard(null);
+        }
+    }
+
+    async function handleSaveEditedCard(e: React.FormEvent) {
+        e.preventDefault();
+        if (!editingCardId || !editCard) return;
+
+        try {
+            setEditCardSaving(true);
+            setEditCardError("");
+            setProfileError("");
+
+            await updatePaymentCard(editingCardId, {
+                card_number: editCard.card_number.replace(/\s/g, ""),
+                expiration_date: editCard.expiration_date,
+                billing_street: editCard.billing_street,
+                billing_city: editCard.billing_city,
+                billing_state: editCard.billing_state.slice(0, 2),
+                billing_zip_code: editCard.billing_zip_code,
+                billing_apt: editCard.billing_apt,
+            });
+            await reloadProfile();
+            setSaveMessage("Card updated. We emailed you to confirm the change.");
+            setEditingCardId(null);
+            setEditCard(null);
+        } catch (error) {
+            setEditCardError(error instanceof Error ? error.message : "Could not update card.");
+        } finally {
+            setEditCardSaving(false);
         }
     }
 
@@ -507,6 +609,15 @@ export default function Profile() {
                     <p style={{ marginTop: 0, color: "#555" }}>
                         Card numbers are stored encrypted on the server. Only a masked value is shown here.
                     </p>
+
+                    {profileError && (
+                        <p style={{ color: "crimson", marginBottom: "16px" }}>{profileError}</p>
+                    )}
+
+                    {saveMessage && (
+                        <p style={{ color: "green", marginBottom: "16px" }}>{saveMessage}</p>
+                    )}
+
                     <ul style={{ listStyle: "none", padding: 0 }}>
                         {profile.payment_cards.map((c) => (
                             <li
@@ -519,20 +630,233 @@ export default function Profile() {
                                     borderBottom: "1px solid #eee",
                                 }}
                             >
-                                <span>
-                                    {c.card_number} · exp {c.expiration_date?.slice(0, 7)}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleDeleteCard(c.card_id)}
-                                    style={{
-                                        padding: "8px 14px",
-                                        borderRadius: "8px",
-                                        cursor: "pointer",
-                                    }}
-                                >
-                                    Remove
-                                </button>
+                                <div style={{ flex: 1 }}>
+                                    <div>
+                                        {formatMaskedCardDisplay(c.card_number)} · exp{" "}
+                                        {formatExpMMYY(c.expiration_date)}
+                                    </div>
+
+                                    {editingCardId === c.card_id && (
+                                        <div style={{ marginTop: "12px" }}>
+                                            {editCardError && (
+                                                <p style={{ color: "crimson", margin: "0 0 8px" }}>
+                                                    {editCardError}
+                                                </p>
+                                            )}
+                                            {!editCard && !editCardError && (
+                                                <p style={{ margin: 0, color: "#555" }}>Loading card details…</p>
+                                            )}
+
+                                            {editCard && (
+                                                <form onSubmit={handleSaveEditedCard}>
+                                                    <div
+                                                        style={{
+                                                            display: "grid",
+                                                            gridTemplateColumns: "1fr 1fr",
+                                                            gap: "12px",
+                                                        }}
+                                                    >
+                                                        <div style={{ gridColumn: "1 / -1" }}>
+                                                            <label>Full card number</label>
+                                                            <input
+                                                                required
+                                                                value={editCard.card_number}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p ? { ...p, card_number: e.target.value } : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label>Expiration (YYYY-MM-DD)</label>
+                                                            <input
+                                                                required
+                                                                value={editCard.expiration_date}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p
+                                                                            ? { ...p, expiration_date: e.target.value }
+                                                                            : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label>Billing ZIP</label>
+                                                            <input
+                                                                required
+                                                                value={editCard.billing_zip_code}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p
+                                                                            ? { ...p, billing_zip_code: e.target.value }
+                                                                            : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: "1 / -1" }}>
+                                                            <label>Street</label>
+                                                            <input
+                                                                required
+                                                                value={editCard.billing_street}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p
+                                                                            ? { ...p, billing_street: e.target.value }
+                                                                            : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label>City</label>
+                                                            <input
+                                                                required
+                                                                value={editCard.billing_city}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p
+                                                                            ? { ...p, billing_city: e.target.value }
+                                                                            : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label>State (2 letters)</label>
+                                                            <input
+                                                                required
+                                                                maxLength={2}
+                                                                value={editCard.billing_state}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p
+                                                                            ? {
+                                                                                  ...p,
+                                                                                  billing_state: e.target.value.toUpperCase(),
+                                                                              }
+                                                                            : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: "1 / -1" }}>
+                                                            <label>Apt/Suite (optional)</label>
+                                                            <input
+                                                                value={editCard.billing_apt ?? ""}
+                                                                onChange={(e) =>
+                                                                    setEditCard((p) =>
+                                                                        p ? { ...p, billing_apt: e.target.value } : p
+                                                                    )
+                                                                }
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "10px",
+                                                                    borderRadius: "8px",
+                                                                    border: "1px solid #ccc",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                                                        <button
+                                                            type="submit"
+                                                            disabled={editCardSaving}
+                                                            style={{
+                                                                padding: "8px 14px",
+                                                                borderRadius: "8px",
+                                                                cursor: "pointer",
+                                                            }}
+                                                        >
+                                                            {editCardSaving ? "Saving…" : "Save"}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingCardId(null);
+                                                                setEditCard(null);
+                                                                setEditCardError("");
+                                                            }}
+                                                            disabled={editCardSaving}
+                                                            style={{
+                                                                padding: "8px 14px",
+                                                                borderRadius: "8px",
+                                                                cursor: "pointer",
+                                                            }}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {editingCardId !== c.card_id && (
+                                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleEditCard(c.card_id)}
+                                            style={{
+                                                padding: "8px 14px",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteCard(c.card_id)}
+                                            style={{
+                                                padding: "8px 14px",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -564,15 +888,15 @@ export default function Profile() {
                                     />
                                 </div>
                                 <div>
-                                    <label>Expiration (YYYY-MM-DD)</label>
+                                    <label>Expiration (MM/YY)</label>
                                     <input
                                         required
                                         type="text"
-                                        value={newCard.expiration_date}
+                                        value={newCard.expiration_mm_yy}
                                         onChange={(e) =>
-                                            setNewCard((p) => ({ ...p, expiration_date: e.target.value }))
+                                            setNewCard((p) => ({ ...p, expiration_mm_yy: e.target.value }))
                                         }
-                                        placeholder="2028-12-01"
+                                        placeholder="12/28"
                                         style={{
                                             width: "100%",
                                             padding: "10px",

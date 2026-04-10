@@ -1,7 +1,6 @@
 export type MovieStatus = "CURRENTLY_RUNNING" | "COMING_SOON";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:5000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export type Movie = {
     id: number;
@@ -65,8 +64,20 @@ export async function getMovieById(id: number | string): Promise<MovieDetails> {
     const raw = await res.json();
     const base = normalizeMovie(raw);
 
-    const showtimes = 
-      raw.showtimes ?? (Array.isArray(raw.shows) ? raw.shows.map((s: any) => String (s.show_time)) : ["2:00 PM", "5:00 PM", "8:00 PM"]);
+    const showtimes =
+      raw.showtimes ??
+      (Array.isArray(raw.shows)
+        ? raw.shows.map((s: any) => {
+            const t = s.start_time ?? s.show_time;
+            if (!t) return "";
+            try {
+              const d = new Date(t);
+              return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+            } catch {
+              return String(t);
+            }
+          }).filter(Boolean)
+        : ["2:00 PM", "5:00 PM", "8:00 PM"]);
     return {...base, showtimes };
 
     // this is not yet used because the booking page doe not use an id (just a prototype)

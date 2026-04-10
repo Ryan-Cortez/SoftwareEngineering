@@ -439,6 +439,19 @@
   border-color: rgba(255, 45, 85, 0.55);
 }
 
+.welcome-banner {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(225, 29, 72, 0.08);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 .auth-page {
   min-height: 100vh;
   display: flex;
@@ -636,4 +649,44 @@
 
 .admin-logout:hover {
   background: #8f0000;
+}
+
+.admin-section-card {
+  max-width: 960px;
+}
+
+.admin-section-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: #b30000;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-section-back:hover {
+  text-decoration: underline;
+}
+
+.admin-table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 2px solid #ddd;
+  color: #333;
+}
+
+.admin-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.admin-table a {
+  color: #b30000;
+  font-weight: 600;
 }

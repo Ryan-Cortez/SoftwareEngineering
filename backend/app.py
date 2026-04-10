@@ -9,40 +9,87 @@ Important: the frontend can consume either snake_case (movie_id, synopsis, ...)
 or camelCase equivalents; it normalizes both.
 """
 
-from flask import Flask, request, jsonify
+import os
+import re
+from datetime import datetime
+
+from cryptography.fernet import Fernet, InvalidToken
+from flask import Flask, jsonify, request, session
+from flask_bcrypt import Bcrypt
+from flask_cors import CORS
+from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import (
-    UniqueConstraint,
-    Index,
     CheckConstraint,
-    ForeignKeyConstraint,
-    PrimaryKeyConstraint,
     Enum,
+    ForeignKeyConstraint,
+    Index,
+    PrimaryKeyConstraint,
+    UniqueConstraint,
     func,
 )
-from datetime import datetime
-import os
-from flask_cors import CORS
-
-# Flask application instance. In production you may create this via an app factory,
-# but keeping it module-level is fine for a small project.
-app = Flask(__name__)
-
-# Allow cross-origin requests so the Vite dev server (localhost:5173) can call the API.
-# This enables CORS for all routes and methods; you can tighten this later if needed.
-CORS(app)
-
 from dotenv import load_dotenv
+
 load_dotenv()
 
-# Database connection string.
+app = Flask(__name__)
+
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        os.environ.get("FRONTEND_URL", "http://localhost:5173").rstrip("/"),
+    ],
+)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["SQLALCHEMY_DATABASE_URI"]
-
-# Disables a feature that adds overhead and is usually not needed.
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "fallback-secret-key")
 
-# SQLAlchemy integration with Flask.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7
+
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", "587"))
+app.config["MAIL_USE_TLS"] = True
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
+app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("MAIL_USERNAME", "")
+
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+mail = Mail(app)
+serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+
+
+def _fernet() -> Fernet:
+    key = os.environ.get("FERNET_KEY", "").strip()
+    if not key:
+        raise RuntimeError("FERNET_KEY must be set for payment card encryption")
+    return Fernet(key.encode() if isinstance(key, str) else key)
+
+
+def encrypt_card_number(plain: str) -> str:
+    return _fernet().encrypt(plain.strip().encode("utf-8")).decode("ascii")
+
+
+def decrypt_card_number(stored: str) -> str:
+    try:
+        return _fernet().decrypt(stored.encode("ascii")).decode("utf-8")
+    except InvalidToken:
+        return ""
+
+
+def mask_card_number(plain: str) -> str:
+    digits = re.sub(r"\D", "", plain)
+    if len(digits) >= 4:
+        return "****" + digits[-4:]
+    return "****"
+
 
 class Movie(db.Model):
     __tablename__ = "movie"
@@ -137,9 +184,7 @@ class Show(db.Model):
 
     show_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     movie_id = db.Column(db.Integer, db.ForeignKey("movie.movie_id", ondelete="RESTRICT"), nullable=False)
-    showroom_id = db.Column(
-        db.Integer, db.ForeignKey("showroom.showroom_id", ondelete="RESTRICT"), nullable=False
-    )
+    showroom_id = db.Column(db.Integer, db.ForeignKey("showroom.showroom_id", ondelete="RESTRICT"), nullable=False)
     start_time = db.Column(db.DateTime, nullable=False)
 
     __table_args__ = (
@@ -153,11 +198,13 @@ class Show(db.Model):
     showroom = db.relationship("Showroom", back_populates="shows")
 
     def to_dict(self) -> dict:
+        st = self.start_time.isoformat() if self.start_time else None
         return {
             "show_id": self.show_id,
             "movie_id": self.movie_id,
             "showroom_id": self.showroom_id,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "start_time": st,
+            "show_time": st,
         }
 
 
@@ -184,9 +231,7 @@ class MovieContributor(db.Model):
     person_name = db.Column(db.String(150), nullable=False)
     role = db.Column(db.String(100), nullable=False)
 
-    __table_args__ = (
-        PrimaryKeyConstraint("movie_id", "person_name", "role"),
-    )
+    __table_args__ = (PrimaryKeyConstraint("movie_id", "person_name", "role"),)
 
     movie = db.relationship("Movie", back_populates="contributors")
 
@@ -223,7 +268,7 @@ class PaymentCard(db.Model):
 
     card_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customer.customer_id", ondelete="CASCADE"), nullable=False)
-    card_number = db.Column(db.String(25), nullable=False)
+    card_number_encrypted = db.Column("card_number", db.String(512), nullable=False)
     expiration_date = db.Column(db.Date, nullable=False)
     billing_street = db.Column(db.String(100), nullable=False)
     billing_city = db.Column(db.String(100), nullable=False)
@@ -252,9 +297,7 @@ class Promotion(db.Model):
     discount_value = db.Column(db.Numeric(10, 2), nullable=False)
     expiration_date = db.Column(db.DateTime, nullable=False)
 
-    __table_args__ = (
-        CheckConstraint("discount_value >= 0", name="chk_discount_value_nonnegative"),
-    )
+    __table_args__ = (CheckConstraint("discount_value >= 0", name="chk_discount_value_nonnegative"),)
 
 
 class BookingFee(db.Model):
@@ -375,64 +418,550 @@ class RecommendationMovie(db.Model):
     __table_args__ = (PrimaryKeyConstraint("recommendation_id", "movie_id"),)
 
 
+def get_current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return User.query.get(uid)
+
+
+def payment_card_to_public_dict(c: PaymentCard) -> dict:
+    plain = decrypt_card_number(c.card_number_encrypted)
+    return {
+        "card_id": c.card_id,
+        "card_number": mask_card_number(plain),
+        "expiration_date": c.expiration_date.isoformat() if c.expiration_date else None,
+        "billing_street": c.billing_street,
+        "billing_city": c.billing_city,
+        "billing_state": c.billing_state,
+        "billing_zip_code": c.billing_zip_code,
+        "billing_apt": c.billing_apt,
+    }
+
+
+MAX_PAYMENT_CARDS = 3
+
+
 @app.get("/api/movies")
 def get_movies():
-    """
-    List movies for the frontend.
-
-    Query parameters expected by the React app:
-    - search: optional text to match in the title
-    - genre: optional exact genre match
-    - showDate: optional YYYY-MM-DD date to filter by show date
-
-    Should return a JSON array of movie objects. Each movie can use either
-    snake_case field names (movie_id, synopsis, trailer_image_url, etc.)
-    or camelCase equivalents; the frontend normalizes both.
-    """
-    # Raw query strings; treat blank/whitespace as "no filter".
     search = (request.args.get("search") or "").strip()
     genre = (request.args.get("genre") or "").strip()
     show_date_raw = (request.args.get("showDate") or "").strip()
 
-    # Start from the base Movie query and add filters as the UI supplies them.
     q = Movie.query
 
-    # Case-insensitive substring match for titles.
     if search:
         q = q.filter(Movie.title.ilike(f"%{search}%"))
 
-    # Exact match genre filter
     if genre:
         q = q.filter(Movie.genre == genre)
 
-    # Filter movies that have at least one show on a given date.
     if show_date_raw:
         try:
             show_date = datetime.strptime(show_date_raw, "%Y-%m-%d").date()
         except ValueError:
             return jsonify({"error": "showDate must be YYYY-MM-DD"}), 400
-
         q = q.join(Movie.shows).filter(func.date(Show.start_time) == show_date).distinct()
 
     movies = q.all()
     return jsonify([m.to_dict(include_shows=False) for m in movies])
 
+
 @app.get("/api/movies/<int:movie_id>")
 def get_movie(movie_id: int):
-    """
-    Get details for a single movie, including its showtimes.
-
-    The frontend expects:
-    - A movie object with fields like:
-      movie_id, title, genre, status, synopsis, trailer_image_url,
-      trailer_video_url, mpaa_rating
-    - EITHER:
-      - "showtimes": list[str]  (e.g. ["2:00 PM", "5:00 PM"])
-      OR
-      - "shows": list[{"show_time": str, ...}] built from Show rows.
-    """
-    # `.get_or_404()` will return a 404 response if no movie exists.
     movie = Movie.query.get_or_404(movie_id)
-
-    # Include `shows` so the frontend can derive showtimes (it already knows how).
     return jsonify(movie.to_dict(include_shows=True))
+
+
+@app.post("/api/auth/register")
+def register():
+    data = request.get_json() or {}
+    last_name = data.get("last_name") or data.get("Last_name", "")
+
+    if not data.get("first_name"):
+        return jsonify({"error": "first_name is required"}), 400
+    if not last_name:
+        return jsonify({"error": "last_name is required"}), 400
+    if not data.get("email"):
+        return jsonify({"error": "email is required"}), 400
+    if not data.get("password"):
+        return jsonify({"error": "password is required"}), 400
+
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+        return jsonify({"error": "Invalid email format"}), 400
+
+    if User.query.filter_by(email=data["email"]).first():
+        return jsonify({"error": "Email already registered", "message": "Email already registered"}), 409
+
+    if len(data["password"]) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    phone = (data.get("phone_number") or data.get("phone") or "").strip() or None
+    if phone and User.query.filter_by(phone_number=phone).first():
+        return jsonify({"error": "Phone number already in use", "message": "Phone number already in use"}), 409
+
+    pw_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
+
+    user = User(
+        first_name=data["first_name"],
+        last_name=last_name,
+        email=data["email"],
+        phone_number=phone,
+        password_hash=pw_hash,
+        is_verified=False,
+        status="Inactive",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    db.session.add(
+        Customer(
+            customer_id=user.user_id,
+            promotion_opt_in=bool(data.get("promotion_opt_in", False)),
+        )
+    )
+    db.session.commit()
+
+    try:
+        token = serializer.dumps(user.email, salt="email-confirm")
+        verify_url = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5173')}/verify-email/{token}"
+        msg = Message("Confirm Your Account", recipients=[user.email])
+        msg.body = (
+            f"Hi {user.first_name},\n\n"
+            f"Verify your account here:\n{verify_url}\n\n"
+            f"This link expires in 1 hour."
+        )
+        print(f"--- DEMO MODE: Verification URL is: {verify_url} ---")
+        if os.environ.get("MAIL_USERNAME"):
+            mail.send(msg)
+    except Exception as e:
+        print(f"Email failed to send: {e}")
+
+    return jsonify({"message": "Registration successful. Please check your email to verify your account."}), 201
+
+
+@app.get("/api/verify-email/<token>")
+def verify_email(token):
+    try:
+        email = serializer.loads(token, salt="email-confirm", max_age=3600)
+    except SignatureExpired:
+        return jsonify({"error": "Verification link has expired."}), 400
+    except BadSignature:
+        return jsonify({"error": "Invalid verification link."}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+    if user.is_verified:
+        return jsonify({"message": "Account already verified."}), 200
+
+    user.is_verified = True
+    user.status = "Active"
+    db.session.commit()
+    return jsonify({"message": "Email verified. You may now log in."}), 200
+
+
+@app.post("/api/auth/login")
+def login():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password", "")
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user or not bcrypt.check_password_hash(user.password_hash, password):
+        return jsonify({"error": "Invalid email or password.", "message": "Invalid email or password."}), 401
+
+    if not user.is_verified:
+        return jsonify(
+            {
+                "error": "Account is not verified. Please check your email to verify your account.",
+                "message": "Account is not verified. Please check your email to verify your account.",
+            }
+        ), 403
+
+    if user.status == "Suspended":
+        return jsonify(
+            {"error": "Your account has been suspended.", "message": "Your account has been suspended."}
+        ), 403
+
+    role = "admin" if user.admin is not None else "customer"
+
+    session["user_id"] = user.user_id
+    session.permanent = True
+
+    token = serializer.dumps(str(user.user_id), salt="login-token")
+
+    return jsonify(
+        {
+            "token": token,
+            "user": {
+                "user_id": user.user_id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "role": role,
+            },
+        }
+    ), 200
+
+
+@app.post("/api/auth/logout")
+def logout():
+    session.clear()
+    return jsonify({"message": "Logged out successfully."}), 200
+
+
+@app.post("/api/forgot-password")
+def forgot_password():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    user = User.query.filter_by(email=email).first()
+
+    if user and user.is_verified:
+        try:
+            token = serializer.dumps(email, salt="password-reset")
+            reset_url = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5173')}/reset-password/{token}"
+            msg = Message("Password Reset Request", recipients=[email])
+            msg.body = (
+                f"Hi {user.first_name},\n\n"
+                f"Reset your password here:\n{reset_url}\n\n"
+                f"This link expires in 30 minutes."
+            )
+            print(f"--- DEMO MODE: Reset URL is: {reset_url} ---")
+            if os.environ.get("MAIL_USERNAME"):
+                mail.send(msg)
+        except Exception as e:
+            print(f"Email failed to send: {e}")
+
+    return jsonify({"message": "If that email is registered, a reset link has been sent."}), 200
+
+
+@app.post("/api/reset-password/<token>")
+def reset_password(token):
+    try:
+        email = serializer.loads(token, salt="password-reset", max_age=1800)
+    except SignatureExpired:
+        return jsonify({"error": "Reset link has expired."}), 400
+    except BadSignature:
+        return jsonify({"error": "Invalid reset link."}), 400
+
+    data = request.get_json() or {}
+    new_password = data.get("password", "")
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    user.password_hash = bcrypt.generate_password_hash(new_password).decode("utf-8")
+    db.session.commit()
+    return jsonify({"message": "Password reset successfully."}), 200
+
+
+@app.get("/api/profile")
+def get_profile():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    address = Address.query.filter_by(customer_id=user.user_id).first()
+    cards = PaymentCard.query.filter_by(customer_id=user.user_id, is_active=True).all()
+    favs = FavoriteMovie.query.filter_by(customer_id=user.user_id).all()
+
+    return jsonify(
+        {
+            "firstName": user.first_name,
+            "lastName": user.last_name,
+            "email": user.email,
+            "phone": user.phone_number or "",
+            "address": (
+                {
+                    "address_id": address.address_id,
+                    "street": address.street,
+                    "city": address.city,
+                    "state": address.state,
+                    "zip_code": address.zip_code,
+                }
+                if address
+                else None
+            ),
+            "payment_cards": [payment_card_to_public_dict(c) for c in cards],
+            "favorites": [m.to_dict() for f in favs if (m := Movie.query.get(f.movie_id))],
+        }
+    )
+
+
+@app.put("/api/profile")
+def update_profile():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    customer = user.customer
+    data = request.get_json() or {}
+
+    if "firstName" in data:
+        user.first_name = data["firstName"]
+    if "first_name" in data:
+        user.first_name = data["first_name"]
+    if "lastName" in data:
+        user.last_name = data["lastName"]
+    if "last_name" in data:
+        user.last_name = data["last_name"]
+    if "phone" in data:
+        pn = (data["phone"] or "").strip() or None
+        if pn and pn != (user.phone_number or ""):
+            if User.query.filter(User.phone_number == pn, User.user_id != user.user_id).first():
+                return jsonify({"error": "Phone number already in use.", "message": "Phone number already in use."}), 409
+        user.phone_number = pn
+    if "phone_number" in data:
+        pn = (data["phone_number"] or "").strip() or None
+        if pn and pn != (user.phone_number or ""):
+            if User.query.filter(User.phone_number == pn, User.user_id != user.user_id).first():
+                return jsonify({"error": "Phone number already in use.", "message": "Phone number already in use."}), 409
+        user.phone_number = pn
+    if "promotion_opt_in" in data and customer:
+        customer.promotion_opt_in = bool(data["promotion_opt_in"])
+
+    if "new_password" in data:
+        if not bcrypt.check_password_hash(user.password_hash, data.get("current_password", "")):
+            return jsonify({"error": "Current password is incorrect.", "message": "Current password is incorrect."}), 400
+        if len(data["new_password"]) < 8:
+            return jsonify({"error": "New password must be at least 8 characters."}), 400
+        user.password_hash = bcrypt.generate_password_hash(data["new_password"]).decode("utf-8")
+
+    if "address" in data:
+        addr_data = data["address"] or {}
+        address = Address.query.filter_by(customer_id=user.user_id).first()
+        if address:
+            for field in ["street", "city", "state", "zip_code"]:
+                if field in addr_data:
+                    setattr(address, field, addr_data[field])
+        else:
+            db.session.add(
+                Address(
+                    customer_id=user.user_id,
+                    street=addr_data.get("street", ""),
+                    city=addr_data.get("city", ""),
+                    state=addr_data.get("state", ""),
+                    zip_code=addr_data.get("zip_code", ""),
+                )
+            )
+
+    db.session.commit()
+
+    try:
+        msg = Message("Your Profile Was Updated", recipients=[user.email])
+        msg.body = (
+            f"Hi {user.first_name},\n\n"
+            f"Your profile was recently updated. If this wasn't you, contact support."
+        )
+        print(f"--- DEMO MODE: Profile update notification intended for {user.email} ---")
+        if os.environ.get("MAIL_USERNAME"):
+            mail.send(msg)
+    except Exception as e:
+        print(f"Email failed to send: {e}")
+
+    return jsonify(
+        {
+            "message": "Profile updated successfully.",
+            "profile": {
+                "firstName": user.first_name,
+                "lastName": user.last_name,
+                "email": user.email,
+                "phone": user.phone_number or "",
+            },
+        }
+    ), 200
+
+
+@app.post("/api/profile/payment-cards")
+def add_payment_card():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    active = PaymentCard.query.filter_by(customer_id=user.user_id, is_active=True).count()
+    if active >= MAX_PAYMENT_CARDS:
+        return jsonify(
+            {
+                "error": "Maximum of 3 payment cards allowed.",
+                "message": "Maximum of 3 payment cards allowed.",
+            }
+        ), 400
+
+    data = request.get_json() or {}
+    raw_num = (data.get("card_number") or data.get("cardNumber") or "").replace(" ", "")
+    if not raw_num or len(raw_num) < 13:
+        return jsonify({"error": "Valid card number is required."}), 400
+
+    exp_raw = data.get("expiration_date") or data.get("expirationDate") or ""
+    try:
+        if isinstance(exp_raw, str) and len(exp_raw) == 7 and exp_raw[4] == "-":
+            exp_date = datetime.strptime(exp_raw + "-01", "%Y-%m-%d").date()
+        else:
+            exp_date = datetime.strptime(str(exp_raw)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"error": "expiration_date must be YYYY-MM-DD"}), 400
+
+    enc = encrypt_card_number(raw_num)
+
+    card = PaymentCard(
+        customer_id=user.user_id,
+        card_number_encrypted=enc,
+        expiration_date=exp_date,
+        billing_street=data.get("billing_street") or data.get("billingStreet") or "",
+        billing_city=data.get("billing_city") or data.get("billingCity") or "",
+        billing_state=(data.get("billing_state") or data.get("billingState") or "")[:2],
+        billing_zip_code=data.get("billing_zip_code") or data.get("billingZipCode") or "",
+        billing_apt=data.get("billing_apt") or data.get("billingApt"),
+        is_active=True,
+    )
+    db.session.add(card)
+    db.session.commit()
+
+    try:
+        msg = Message("Your Profile Was Updated", recipients=[user.email])
+        msg.body = f"Hi {user.first_name},\n\nA payment card was added to your account."
+        if os.environ.get("MAIL_USERNAME"):
+            mail.send(msg)
+    except Exception as e:
+        print(f"Email failed to send: {e}")
+
+    return jsonify({"message": "Card added.", "card": payment_card_to_public_dict(card)}), 201
+
+
+@app.put("/api/profile/payment-cards/<int:card_id>")
+def update_payment_card(card_id: int):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
+    if not card:
+        return jsonify({"error": "Card not found."}), 404
+
+    data = request.get_json() or {}
+
+    if "card_number" in data or "cardNumber" in data:
+        raw_num = (data.get("card_number") or data.get("cardNumber") or "").replace(" ", "")
+        if raw_num and len(raw_num) >= 13:
+            card.card_number_encrypted = encrypt_card_number(raw_num)
+
+    exp_raw = data.get("expiration_date") or data.get("expirationDate")
+    if exp_raw:
+        try:
+            if isinstance(exp_raw, str) and len(exp_raw) == 7 and exp_raw[4] == "-":
+                card.expiration_date = datetime.strptime(exp_raw + "-01", "%Y-%m-%d").date()
+            else:
+                card.expiration_date = datetime.strptime(str(exp_raw)[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return jsonify({"error": "expiration_date must be YYYY-MM-DD"}), 400
+
+    for json_k, attr in [
+        ("billing_street", "billing_street"),
+        ("billingStreet", "billing_street"),
+        ("billing_city", "billing_city"),
+        ("billingCity", "billing_city"),
+        ("billing_state", "billing_state"),
+        ("billingState", "billing_state"),
+        ("billing_zip_code", "billing_zip_code"),
+        ("billingZipCode", "billing_zip_code"),
+        ("billing_apt", "billing_apt"),
+        ("billingApt", "billing_apt"),
+    ]:
+        if json_k in data and data[json_k] is not None:
+            val = data[json_k]
+            if attr == "billing_state":
+                val = str(val)[:2]
+            setattr(card, attr, val)
+
+    db.session.commit()
+
+    try:
+        msg = Message("Your Profile Was Updated", recipients=[user.email])
+        msg.body = f"Hi {user.first_name},\n\nA payment card on your account was updated."
+        if os.environ.get("MAIL_USERNAME"):
+            mail.send(msg)
+    except Exception as e:
+        print(f"Email failed to send: {e}")
+
+    return jsonify({"message": "Card updated.", "card": payment_card_to_public_dict(card)}), 200
+
+
+@app.delete("/api/profile/payment-cards/<int:card_id>")
+def delete_payment_card(card_id: int):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id).first()
+    if not card:
+        return jsonify({"error": "Card not found."}), 404
+
+    if Booking.query.filter_by(customer_id=user.user_id, card_id=card_id).first():
+        card.is_active = False
+    else:
+        db.session.delete(card)
+    db.session.commit()
+
+    try:
+        msg = Message("Your Profile Was Updated", recipients=[user.email])
+        msg.body = f"Hi {user.first_name},\n\nA payment card was removed from your account."
+        if os.environ.get("MAIL_USERNAME"):
+            mail.send(msg)
+    except Exception as e:
+        print(f"Email failed to send: {e}")
+
+    return jsonify({"message": "Card removed."}), 200
+
+
+@app.get("/api/favorites")
+def get_favorites():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    favs = FavoriteMovie.query.filter_by(customer_id=user.user_id).all()
+    return jsonify([m.to_dict() for f in favs if (m := Movie.query.get(f.movie_id))]), 200
+
+
+@app.post("/api/favorites")
+def add_favorite():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    data = request.get_json() or {}
+    movie_id = data.get("movieId") or data.get("movie_id")
+    if not movie_id:
+        return jsonify({"error": "movieId is required"}), 400
+
+    Movie.query.get_or_404(movie_id)
+
+    if not FavoriteMovie.query.filter_by(customer_id=user.user_id, movie_id=movie_id).first():
+        db.session.add(FavoriteMovie(customer_id=user.user_id, movie_id=movie_id))
+        db.session.commit()
+
+    return jsonify({"message": "Added to favorites."}), 201
+
+
+@app.delete("/api/favorites")
+def remove_favorite():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    data = request.get_json() or {}
+    movie_id = data.get("movieId") or data.get("movie_id")
+    if not movie_id:
+        return jsonify({"error": "movieId is required"}), 400
+
+    fav = FavoriteMovie.query.filter_by(customer_id=user.user_id, movie_id=movie_id).first()
+    if fav:
+        db.session.delete(fav)
+        db.session.commit()
+
+    return jsonify({"message": "Removed from favorites."}), 200

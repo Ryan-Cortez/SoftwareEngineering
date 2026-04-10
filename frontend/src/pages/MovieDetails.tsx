@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getMovieById, type MovieDetails } from "../api/cinemaApi.ts";
+import { addFavorite, getFavorites, removeFavorite } from "../api/favorites";
 
 export default function MovieDetails() {
     const { id } = useParams();
     const movieId = Number(id);
     const navigate = useNavigate();
 
-    
     const [movie, setMovie] = useState<MovieDetails | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [favoriteLoading, setFavoriteLoading] = useState(false);
 
     const trailerEmbedUrl = useMemo(() => {
         if (!movie?.trailerUrl) return "";
@@ -37,7 +39,7 @@ export default function MovieDetails() {
 
     useEffect(() => {
         let cancelled = false;
-        async function load () {
+        async function load() {
             setError(null);
             try {
                 const current = await getMovieById(movieId);
@@ -51,6 +53,41 @@ export default function MovieDetails() {
             cancelled = true;
         };
     }, [movieId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        async function loadFavorites() {
+            try {
+                const favorites = await getFavorites();
+                if (!cancelled) setIsFavorite(favorites.some((f) => f.id === movieId));
+            } catch {
+                if (!cancelled) setIsFavorite(false);
+            }
+        }
+        loadFavorites();
+        return () => {
+            cancelled = true;
+        };
+    }, [movieId]);
+
+    async function handleFavoriteToggle(e: React.MouseEvent<HTMLButtonElement>) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+            setFavoriteLoading(true);
+            if (isFavorite) {
+                await removeFavorite(movieId);
+                setIsFavorite(false);
+            } else {
+                await addFavorite(movieId);
+                setIsFavorite(true);
+            }
+        } catch {
+            // not logged in or network error
+        } finally {
+            setFavoriteLoading(false);
+        }
+    }
 
     if (error) return <div> {error} </div>;
     if (!movie) return <div>Loading...</div>;
@@ -74,7 +111,26 @@ export default function MovieDetails() {
                     </div>
 
                     <div className="movie-details__content">
-                        <h1 className="movie-details__title">{movie.title}</h1>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                            <h1 className="movie-details__title" style={{ margin: 0 }}>
+                                {movie.title}
+                            </h1>
+                            <button
+                                type="button"
+                                onClick={handleFavoriteToggle}
+                                disabled={favoriteLoading}
+                                aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                                title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                                style={{
+                                    background: "none",
+                                    border: "none",
+                                    fontSize: "1.5rem",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                {isFavorite ? "❤️" : "🤍"}
+                            </button>
+                        </div>
                         <div className="movie-details__meta">
                             <span>{movie.genre}</span>
                             {movie.rating && <span>• {movie.rating}</span>}
@@ -99,25 +155,18 @@ export default function MovieDetails() {
 
                         <h3 className="movie-details__section-title">Showtimes</h3>
                         <div className="movie-details__showtimes">
-                    
-                            <button        
-                                className="booking_prototype_btn"
-                                onClick={() =>
-                                    navigate(`/booking`)
-                                }
-                            > 2:00 PM </button>
-                            <button        
-                                className="booking_prototype_btn"
-                                onClick={() =>
-                                    navigate(`/booking`)
-                                }
-                            > 5:00 PM </button>
-                            <button        
-                                className="booking_prototype_btn"
-                                onClick={() =>
-                                    navigate(`/booking`)
-                                }
-                            > 8:00 PM </button>
+                            {(movie.showtimes?.length ? movie.showtimes : ["2:00 PM", "5:00 PM", "8:00 PM"]).map(
+                                (t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        className="booking_prototype_btn"
+                                        onClick={() => navigate(`/booking`)}
+                                    >
+                                        {t}
+                                    </button>
+                                )
+                            )}
                         </div>
                     </div>
                 </div>

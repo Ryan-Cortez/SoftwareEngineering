@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { getProfile, updateProfile, type UserProfile } from "../api/profileApi";
+import {
+    getProfile,
+    updateProfile,
+    addPaymentCard,
+    deletePaymentCard,
+    type UserProfile,
+    type Address,
+} from "../api/profileApi";
 import { getFavorites, removeFavorite } from "../api/favorites";
 import type { Movie } from "../api/cinemaApi";
 
-type PaymentMethod = {
-    id: number;
-    cardHolderName: string;
-    cardNumber: string;
-    expiry: string;
-}
+const MAX_CARDS = 3;
 
 export default function Profile() {
     const [profile, setProfile] = useState<UserProfile>({
@@ -16,46 +18,70 @@ export default function Profile() {
         lastName: "",
         email: "",
         phone: "",
+        address: null,
+        payment_cards: [],
+    });
+
+    const [address, setAddress] = useState<Address>({
+        street: "",
+        city: "",
+        state: "",
+        zip_code: "",
     });
 
     const [favorites, setFavorites] = useState<Movie[]>([]);
 
-    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
-        {
-            id: 1,
-            cardHolderName: " Bob Ross",
-            cardNumber: " **** **** **** 1234",
-            expiry: "01/28"
-        },
-    ]);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
-    const [newCardHolderName, setNewCardHolderName] = useState("");
-    const [newCardNumber, setNewCardNumber] = useState("");
-    const [newExpiry, setNewExpiry] = useState("");
+    const [newCard, setNewCard] = useState({
+        card_number: "",
+        expiration_date: "",
+        billing_street: "",
+        billing_city: "",
+        billing_state: "",
+        billing_zip_code: "",
+    });
 
     const [loadingProfile, setLoadingProfile] = useState(true);
-    const [loadingFavoites, setLoadingFavorites] = useState(true);
- 
+    const [loadingFavorites, setLoadingFavorites] = useState(true);
+
     const [saving, setSaving] = useState(false);
+    const [cardSaving, setCardSaving] = useState(false);
 
     const [profileError, setProfileError] = useState("");
     const [favoritesError, setFavoritesError] = useState("");
     const [paymentError, setPaymentError] = useState("");
     const [saveMessage, setSaveMessage] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+
+    async function reloadProfile() {
+        const data = await getProfile();
+        setProfile(data);
+        if (data.address) {
+            setAddress({
+                street: data.address.street,
+                city: data.address.city,
+                state: data.address.state,
+                zip_code: data.address.zip_code,
+            });
+        } else {
+            setAddress({ street: "", city: "", state: "", zip_code: "" });
+        }
+    }
 
     useEffect(() => {
         async function loadProfile() {
             try {
                 setLoadingProfile(true);
                 setProfileError("");
-
-                const data = await getProfile();
-                setProfile(data);
+                await reloadProfile();
             } catch (error) {
                 console.error(error);
                 setProfileError("Failed to load profile.");
             } finally {
-                setLoadingProfile(false)
+                setLoadingProfile(false);
             }
         }
 
@@ -63,7 +89,7 @@ export default function Profile() {
             try {
                 setLoadingFavorites(true);
                 setFavoritesError("");
-                
+
                 const data = await getFavorites();
                 setFavorites(data);
             } catch (error) {
@@ -80,31 +106,64 @@ export default function Profile() {
     function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
         const { name, value } = event.target;
 
-        setProfile( (prev) => ({
+        setProfile((prev) => ({
             ...prev,
             [name]: value,
         }));
     }
 
+    function handleAddressChange(event: React.ChangeEvent<HTMLInputElement>) {
+        const { name, value } = event.target;
+        setAddress((prev) => ({ ...prev, [name]: value }));
+    }
+
     async function handleSave(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        
+
         try {
             setSaving(true);
             setSaveMessage("");
             setProfileError("");
+            setPasswordError("");
 
-            const response = await updateProfile({
+            if (newPassword || confirmNewPassword || currentPassword) {
+                if (!currentPassword) {
+                    setPasswordError("Enter your current password to change it.");
+                    return;
+                }
+                if (newPassword.length < 8) {
+                    setPasswordError("New password must be at least 8 characters.");
+                    return;
+                }
+                if (newPassword !== confirmNewPassword) {
+                    setPasswordError("New passwords do not match.");
+                    return;
+                }
+            }
+
+            const payload: Parameters<typeof updateProfile>[0] = {
                 firstName: profile.firstName,
                 lastName: profile.lastName,
                 phone: profile.phone,
-            });
+                address,
+            };
 
-            if (response.profile) {
-                setProfile(response.profile);
+            if (newPassword && currentPassword) {
+                payload.current_password = currentPassword;
+                payload.new_password = newPassword;
             }
 
+            const response = await updateProfile(payload);
+
+            if (response.profile) {
+                setProfile((prev) => ({ ...prev, ...response.profile }));
+            }
+            await reloadProfile();
+
             setSaveMessage(response.message || "Profile updated successfully.");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmNewPassword("");
         } catch (error) {
             console.error(error);
             setProfileError(
@@ -115,10 +174,57 @@ export default function Profile() {
         }
     }
 
+    async function handleAddCard(e: React.FormEvent) {
+        e.preventDefault();
+        if (profile.payment_cards.length >= MAX_CARDS) return;
+
+        try {
+            setCardSaving(true);
+            setProfileError("");
+            await addPaymentCard({
+                card_number: newCard.card_number.replace(/\s/g, ""),
+                expiration_date: newCard.expiration_date,
+                billing_street: newCard.billing_street,
+                billing_city: newCard.billing_city,
+                billing_state: newCard.billing_state.slice(0, 2),
+                billing_zip_code: newCard.billing_zip_code,
+            });
+            await reloadProfile();
+            setNewCard({
+                card_number: "",
+                expiration_date: "",
+                billing_street: "",
+                billing_city: "",
+                billing_state: "",
+                billing_zip_code: "",
+            });
+            setSaveMessage("Payment card added.");
+        } catch (error) {
+            setProfileError(
+                error instanceof Error ? error.message : "Could not add card."
+            );
+        } finally {
+            setCardSaving(false);
+        }
+    }
+
+    async function handleDeleteCard(cardId: number) {
+        try {
+            setProfileError("");
+            await deletePaymentCard(cardId);
+            await reloadProfile();
+            setSaveMessage("Card removed.");
+        } catch (error) {
+            setProfileError(
+                error instanceof Error ? error.message : "Could not remove card."
+            );
+        }
+    }
+
     async function handleRemoveFavorite(movieId: number) {
         try {
             await removeFavorite(movieId);
-            
+
             setFavorites((prev) => prev.filter((movie) => movie.id !== movieId));
         } catch (error) {
             console.error(error);
@@ -178,38 +284,61 @@ export default function Profile() {
     }
  
     if (loadingProfile) {
-        return <p style={{padding: "24px"}}>Loading Profile...</p>;
+        return <p style={{ padding: "24px" }}>Loading Profile...</p>;
     }
 
     return (
-        <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "24px"}}>
-            <h1 style={{ marginBottom: "24px"}}>My Profile</h1>
+        <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "24px" }}>
+            <h1 style={{ marginBottom: "24px" }}>My Profile</h1>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "32px" }}>
-                <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px",}}>
+                <section
+                    style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px" }}
+                >
                     <h2 style={{ marginTop: 0 }}>Profile Information</h2>
 
-                    {profileError && <p style={{ color: "crimson", marginBottom: "16px"}}>{profileError}</p>}
+                    {profileError && (
+                        <p style={{ color: "crimson", marginBottom: "16px" }}>{profileError}</p>
+                    )}
 
-                    {saveMessage && <p style={{ color: "green", marginBottom: "16px"}}>{saveMessage}</p>}
+                    {saveMessage && (
+                        <p style={{ color: "green", marginBottom: "16px" }}>{saveMessage}</p>
+                    )}
 
                     <form onSubmit={handleSave}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px"}}>
+                        <div
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr",
+                                gap: "16px",
+                            }}
+                        >
                             <div>
-                                <label htmlFor="firstName" style={{ display: "block", marginBottom: "8px"}}>
+                                <label
+                                    htmlFor="firstName"
+                                    style={{ display: "block", marginBottom: "8px" }}
+                                >
                                     First Name
                                 </label>
-                                <input 
-                                    id="firstName" 
-                                    name="firstName" 
-                                    type="text" 
-                                    value={profile.firstName} 
-                                    onChange={handleChange} 
+                                <input
+                                    id="firstName"
+                                    name="firstName"
+                                    type="text"
+                                    value={profile.firstName}
+                                    onChange={handleChange}
                                     required
-                                    style={{ width: "250px", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}} 
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
                                 />
                             </div>
                             <div>
-                                <label htmlFor="lastName" style={{ display: "block", marginBottom:"8px"}}>
+                                <label
+                                    htmlFor="lastName"
+                                    style={{ display: "block", marginBottom: "8px" }}
+                                >
                                     Last Name
                                 </label>
                                 <input
@@ -219,124 +348,415 @@ export default function Profile() {
                                     value={profile.lastName}
                                     onChange={handleChange}
                                     required
-                                    style={{ width: "250px", padding: "10px", borderRadius: "8px", border: "1px solid #ccc"}}
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="email" style={{ display: "block", marginBottom: "8px" }}>
-                                Email
-                                </label>
-                                <input
-                                id="email"
-                                name="email"
-                                type="email"
-                                value={profile.email}
-                                disabled
-                                style={{
-                                    width: "250px",
-                                    padding: "10px",
-                                    borderRadius: "8px",
-                                    backgroundColor: "#f5f5f5",
-                                    color: "#666",
-                                }}
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="phone" style={{ display: "block", marginBottom: "8px" }}>
-                                Phone
-                                </label>
-                                <input
-                                id="phone"
-                                name="phone"
-                                type="text"
-                                value={profile.phone}
-                                onChange={handleChange}
-                                style={{
-                                    width: "250px",
-                                    padding: "10px",
-                                    borderRadius: "8px",
-                                    border: "1px solid #ccc",
-                                }}
-                                />
-                            </div>
-                        </div>
-                        <button type="submit" disabled={saving} 
-                            style={{ display: "block", margin: "0 auto", marginTop: "15px",border: "none", borderRadius: "8px"}}>
-                                {saving ? "Saving..." : "Save Changes"}
-                            </button>
-                    </form>
-                </section>
-
-                <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px",}}>
-                    <h2 style={{ marginBottom: "16px"}}>Stored Payment Methods</h2>
-
-                    {paymentError && <p>{paymentError}</p>}
-                    {paymentMethods.length === 0 ? (
-                        <p>No payment methods saved yet.</p>
-                    ) : (
-                        <div style={{ display: "flex", justifyContent: "center", marginBottom: "15px", alignItems: "center"}}>{paymentMethods.map((card) => (
-                            <div key={card.id} style={{border: "1px solid #ddd", borderRadius: "10px", padding: "20px"}}>
-                                <p><strong> {card.cardHolderName}</strong></p>
-                                <p>{card.cardNumber}</p>
-                                <p> Expires: {card.expiry}</p>
-
-                                <button type="button" onClick={() => handleRemovePaymentMethod(card.id)}>Remove Card</button>
-                            </div>
-                        ))}
-                        </div>
-                    )}
-
-                    <form onSubmit={handlAddPaymentMethod}>
-                        <div>
-                            <h4 style={{ marginBottom: "10px"}}>New Payment Method:</h4>
-                            <label htmlFor="cardHolderName">Cardholder Name:  </label>
-                            <input id="cardHolderName" type="text" value={newCardHolderName} onChange={(e) => setNewCardHolderName(e.target.value)} 
-                                placeholder="Enter cardholder name"/>
-                        </div>
-
-                        <div>
-                            <label htmlFor="cardNumber">Card Number:  </label>
-                            <input id="cardNumber" type="text" value={newCardNumber} onChange={(e) => setNewCardNumber(formatCardNumber(e.target.value))}
-                                placeholder="1234 5678 9012 3456" />
-                        </div>
-
-                        <div>
-                            <label htmlFor="expiry">Expiration Date:  </label>
-                            <input id="expiry" type="text" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
-                                placeholder="MM/YY" /> 
-                        </div>
-
-                        <button style={{marginTop: "20px"}} type="submit" disabled={paymentMethods.length >= 3}>Add Payment Method</button>
-                    </form>
-                    <p style={{ marginBottom: "5px"}}>You may store up to 3 payment cards</p>
-                </section>
-                <section style={{ border: "1fr solid #ddd", borderRadius: "12px", padding: "24px"}}>
-                    <h2 style={{ marginTop: 0}}>Favorite Movies</h2>
-                    {loadingFavoites && <p>Loading favorite movies...</p>}
-                    {favoritesError && (
-                        <p style={{ color: "crimson"}}>{favoritesError}</p>
-                    )}
-
-                    {!loadingFavoites && !favoritesError && favorites.length === 0 && (
-                        <p>You do not have any favorite movies selected.</p>
-                    )}
-                    {!loadingFavoites && !favoritesError && favorites.length > 0 && (
-                        <div style={{ display: "grid", gridTemplateColumns: "retpeat(auto-fit, minmax(220px, 1fr))", gap: "20px"}}>
-                            {favorites.map((movie) => (
-                                <div key={movie.id} style={{border: " 1px solid #ccc", borderRadius: "12px", padding: "16px"}}>
-                                    <img src={movie.posterUrl}
-                                        alt={movie.title}
-                                        style={{
+                                    style={{
                                         width: "100%",
-                                        height: "320px",
-                                        objectFit: "cover",
+                                        padding: "10px",
                                         borderRadius: "8px",
-                                        marginBottom: "12px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor="email"
+                                    style={{ display: "block", marginBottom: "8px" }}
+                                >
+                                    Email
+                                </label>
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    value={profile.email}
+                                    disabled
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                        backgroundColor: "#f5f5f5",
+                                        color: "#666",
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor="phone"
+                                    style={{ display: "block", marginBottom: "8px" }}
+                                >
+                                    Phone
+                                </label>
+                                <input
+                                    id="phone"
+                                    name="phone"
+                                    type="text"
+                                    value={profile.phone}
+                                    onChange={handleChange}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <h3 style={{ marginTop: "24px" }}>Address (max one)</h3>
+                        <div
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr",
+                                gap: "16px",
+                            }}
+                        >
+                            <div style={{ gridColumn: "1 / -1" }}>
+                                <label htmlFor="street">Street</label>
+                                <input
+                                    id="street"
+                                    name="street"
+                                    value={address.street}
+                                    onChange={handleAddressChange}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="city">City</label>
+                                <input
+                                    id="city"
+                                    name="city"
+                                    value={address.city}
+                                    onChange={handleAddressChange}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="state">State</label>
+                                <input
+                                    id="state"
+                                    name="state"
+                                    value={address.state}
+                                    onChange={handleAddressChange}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div style={{ gridColumn: "1 / -1" }}>
+                                <label htmlFor="zip_code">ZIP</label>
+                                <input
+                                    id="zip_code"
+                                    name="zip_code"
+                                    value={address.zip_code}
+                                    onChange={handleAddressChange}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <h3 style={{ marginTop: "24px" }}>Change password</h3>
+                        {passwordError && (
+                            <p style={{ color: "crimson" }}>{passwordError}</p>
+                        )}
+                        <div
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr",
+                                gap: "16px",
+                            }}
+                        >
+                            <div>
+                                <label htmlFor="currentPassword">Current password</label>
+                                <input
+                                    id="currentPassword"
+                                    type="password"
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                    autoComplete="current-password"
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div />
+                            <div>
+                                <label htmlFor="newPassword">New password</label>
+                                <input
+                                    id="newPassword"
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    autoComplete="new-password"
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="confirmNewPassword">Confirm new password</label>
+                                <input
+                                    id="confirmNewPassword"
+                                    type="password"
+                                    value={confirmNewPassword}
+                                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                    autoComplete="new-password"
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #ccc",
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            style={{
+                                marginTop: "20px",
+                                padding: "10px 18px",
+                                border: "none",
+                                borderRadius: "8px",
+                                cursor: "pointer",
+                            }}
+                        >
+                            {saving ? "Saving..." : "Save Changes"}
+                        </button>
+                    </form>
+                </section>
+
+                <section
+                    style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px" }}
+                >
+                    <h2 style={{ marginTop: 0 }}>Payment cards (max {MAX_CARDS})</h2>
+                    <p style={{ marginTop: 0, color: "#555" }}>
+                        Card numbers are stored encrypted on the server. Only a masked value is shown here.
+                    </p>
+                    <ul style={{ listStyle: "none", padding: 0 }}>
+                        {profile.payment_cards.map((c) => (
+                            <li
+                                key={c.card_id}
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    padding: "12px 0",
+                                    borderBottom: "1px solid #eee",
+                                }}
+                            >
+                                <span>
+                                    {c.card_number} · exp {c.expiration_date?.slice(0, 7)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleDeleteCard(c.card_id)}
+                                    style={{
+                                        padding: "8px 14px",
+                                        borderRadius: "8px",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    Remove
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+
+                    {profile.payment_cards.length < MAX_CARDS && (
+                        <form onSubmit={handleAddCard} style={{ marginTop: "16px" }}>
+                            <div
+                                style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "1fr 1fr",
+                                    gap: "12px",
+                                }}
+                            >
+                                <div style={{ gridColumn: "1 / -1" }}>
+                                    <label>Card number</label>
+                                    <input
+                                        required
+                                        value={newCard.card_number}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({ ...p, card_number: e.target.value }))
+                                        }
+                                        placeholder="16 digits"
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
                                         }}
                                     />
-                                    <h3 style={{ margin: "0 0 8px"}}>{movie.title}</h3>
-                                    <p style={{ margin: "0 0 4px"}}>
-                                        <strong>Genre:</strong> {movie.genre} 
+                                </div>
+                                <div>
+                                    <label>Expiration (YYYY-MM-DD)</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={newCard.expiration_date}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({ ...p, expiration_date: e.target.value }))
+                                        }
+                                        placeholder="2028-12-01"
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label>Billing ZIP</label>
+                                    <input
+                                        required
+                                        value={newCard.billing_zip_code}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({ ...p, billing_zip_code: e.target.value }))
+                                        }
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ gridColumn: "1 / -1" }}>
+                                    <label>Street</label>
+                                    <input
+                                        required
+                                        value={newCard.billing_street}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({ ...p, billing_street: e.target.value }))
+                                        }
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label>City</label>
+                                    <input
+                                        required
+                                        value={newCard.billing_city}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({ ...p, billing_city: e.target.value }))
+                                        }
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label>State (2 letters)</label>
+                                    <input
+                                        required
+                                        maxLength={2}
+                                        value={newCard.billing_state}
+                                        onChange={(e) =>
+                                            setNewCard((p) => ({
+                                                ...p,
+                                                billing_state: e.target.value.toUpperCase(),
+                                            }))
+                                        }
+                                        style={{
+                                            width: "100%",
+                                            padding: "10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ccc",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={cardSaving}
+                                style={{
+                                    marginTop: "12px",
+                                    padding: "10px 18px",
+                                    borderRadius: "8px",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                {cardSaving ? "Adding…" : "Add card"}
+                            </button>
+                        </form>
+                    )}
+                </section>
+
+                <section
+                    style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px" }}
+                >
+                    <h2 style={{ marginTop: 0 }}>Favorite Movies</h2>
+                    {loadingFavorites && <p>Loading favorite movies...</p>}
+                    {favoritesError && <p style={{ color: "crimson" }}>{favoritesError}</p>}
+
+                    {!loadingFavorites && !favoritesError && favorites.length === 0 && (
+                        <p>You do not have any favorite movies selected.</p>
+                    )}
+                    {!loadingFavorites && !favoritesError && favorites.length > 0 && (
+                        <div
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                                gap: "20px",
+                            }}
+                        >
+                            {favorites.map((movie) => (
+                                <div
+                                    key={movie.id}
+                                    style={{
+                                        border: "1px solid #ccc",
+                                        borderRadius: "12px",
+                                        padding: "16px",
+                                    }}
+                                >
+                                    <img
+                                        src={movie.posterUrl}
+                                        alt={movie.title}
+                                        style={{
+                                            width: "100%",
+                                            height: "320px",
+                                            objectFit: "cover",
+                                            borderRadius: "8px",
+                                            marginBottom: "12px",
+                                        }}
+                                    />
+                                    <h3 style={{ margin: "0 0 8px" }}>{movie.title}</h3>
+                                    <p style={{ margin: "0 0 4px" }}>
+                                        <strong>Genre:</strong> {movie.genre}
                                     </p>
                                     <p style={{ margin: "0 0 12px" }}>
                                         <strong>Rating:</strong> {movie.rating}
@@ -344,7 +764,13 @@ export default function Profile() {
                                     <button
                                         type="button"
                                         onClick={() => handleRemoveFavorite(movie.id)}
-                                        style={{ padding: "8px 14px", border: "none", borderRadius: "8px"}}>
+                                        style={{
+                                            padding: "8px 14px",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            cursor: "pointer",
+                                        }}
+                                    >
                                         Remove from Favorites
                                     </button>
                                 </div>

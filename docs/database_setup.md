@@ -45,3 +45,6 @@
 ## The updated database schema
 
 - check database_design.md
+
+
+docker logs -f cinema-mysql

@@ -55,15 +55,39 @@ app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7
 
 app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
 app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", "587"))
-app.config["MAIL_USE_TLS"] = True
+app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "true").strip().lower() in ("1", "true", "yes", "y")
+app.config["MAIL_USE_SSL"] = os.environ.get("MAIL_USE_SSL", "false").strip().lower() in ("1", "true", "yes", "y")
 app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
-app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("MAIL_USERNAME", "")
+app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("MAIL_USERNAME", "")
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 mail = Mail(app)
 serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+
+
+def _mail_is_configured() -> bool:
+    return bool(
+        (app.config.get("MAIL_SERVER") or "").strip()
+        and int(app.config.get("MAIL_PORT") or 0) > 0
+        and (app.config.get("MAIL_USERNAME") or "").strip()
+        and (app.config.get("MAIL_PASSWORD") or "").strip()
+        and (app.config.get("MAIL_DEFAULT_SENDER") or "").strip()
+    )
+
+
+def _send_email_or_log(*, subject: str, recipients: list[str], body: str, demo_fallback_label: str) -> None:
+    if not recipients:
+        return
+
+    if not _mail_is_configured():
+        print(f"--- DEMO MODE: {demo_fallback_label} ---")
+        return
+
+    msg = Message(subject, recipients=recipients)
+    msg.body = body
+    mail.send(msg)
 
 
 def _fernet() -> Fernet:
@@ -87,8 +111,9 @@ def decrypt_card_number(stored: str) -> str:
 def mask_card_number(plain: str) -> str:
     digits = re.sub(r"\D", "", plain)
     if len(digits) >= 4:
-        return "****" + digits[-4:]
-    return "****"
+        # Use a fixed 12-star mask for consistent UI (typical 16-digit cards).
+        return "*" * 12 + digits[-4:]
+    return "*" * 12
 
 
 class Movie(db.Model):
@@ -269,6 +294,7 @@ class PaymentCard(db.Model):
     card_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customer.customer_id", ondelete="CASCADE"), nullable=False)
     card_number_encrypted = db.Column("card_number", db.String(512), nullable=False)
+    last_four = db.Column(db.String(4), nullable=False)
     expiration_date = db.Column(db.Date, nullable=False)
     billing_street = db.Column(db.String(100), nullable=False)
     billing_city = db.Column(db.String(100), nullable=False)
@@ -426,10 +452,15 @@ def get_current_user():
 
 
 def payment_card_to_public_dict(c: PaymentCard) -> dict:
-    plain = decrypt_card_number(c.card_number_encrypted)
+    last4 = (c.last_four or "").strip()
+    if last4 and len(last4) == 4:
+        masked = "*" * 12 + last4
+    else:
+        plain = decrypt_card_number(c.card_number_encrypted)
+        masked = mask_card_number(plain)
     return {
         "card_id": c.card_id,
-        "card_number": mask_card_number(plain),
+        "card_number": masked,
         "expiration_date": c.expiration_date.isoformat() if c.expiration_date else None,
         "billing_street": c.billing_street,
         "billing_city": c.billing_city,
@@ -525,15 +556,16 @@ def register():
     try:
         token = serializer.dumps(user.email, salt="email-confirm")
         verify_url = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5173')}/verify-email/{token}"
-        msg = Message("Confirm Your Account", recipients=[user.email])
-        msg.body = (
-            f"Hi {user.first_name},\n\n"
-            f"Verify your account here:\n{verify_url}\n\n"
-            f"This link expires in 1 hour."
+        _send_email_or_log(
+            subject="Confirm Your Account",
+            recipients=[user.email],
+            body=(
+                f"Hi {user.first_name},\n\n"
+                f"Verify your account here:\n{verify_url}\n\n"
+                f"This link expires in 1 hour."
+            ),
+            demo_fallback_label=f"Verification URL is: {verify_url}",
         )
-        print(f"--- DEMO MODE: Verification URL is: {verify_url} ---")
-        if os.environ.get("MAIL_USERNAME"):
-            mail.send(msg)
     except Exception as e:
         print(f"Email failed to send: {e}")
 
@@ -618,19 +650,20 @@ def forgot_password():
     email = (data.get("email") or "").strip()
     user = User.query.filter_by(email=email).first()
 
-    if user and user.is_verified:
+    if user:
         try:
             token = serializer.dumps(email, salt="password-reset")
             reset_url = f"{os.environ.get('FRONTEND_URL', 'http://localhost:5173')}/reset-password/{token}"
-            msg = Message("Password Reset Request", recipients=[email])
-            msg.body = (
-                f"Hi {user.first_name},\n\n"
-                f"Reset your password here:\n{reset_url}\n\n"
-                f"This link expires in 30 minutes."
+            _send_email_or_log(
+                subject="Password Reset Request",
+                recipients=[email],
+                body=(
+                    f"Hi {user.first_name},\n\n"
+                    f"Reset your password here:\n{reset_url}\n\n"
+                    f"This link expires in 30 minutes."
+                ),
+                demo_fallback_label=f"Reset URL is: {reset_url}",
             )
-            print(f"--- DEMO MODE: Reset URL is: {reset_url} ---")
-            if os.environ.get("MAIL_USERNAME"):
-                mail.send(msg)
         except Exception as e:
             print(f"Email failed to send: {e}")
 
@@ -753,14 +786,15 @@ def update_profile():
     db.session.commit()
 
     try:
-        msg = Message("Your Profile Was Updated", recipients=[user.email])
-        msg.body = (
-            f"Hi {user.first_name},\n\n"
-            f"Your profile was recently updated. If this wasn't you, contact support."
+        _send_email_or_log(
+            subject="Your Profile Was Updated",
+            recipients=[user.email],
+            body=(
+                f"Hi {user.first_name},\n\n"
+                f"Your profile was recently updated. If this wasn't you, contact support."
+            ),
+            demo_fallback_label=f"Profile update notification intended for {user.email}",
         )
-        print(f"--- DEMO MODE: Profile update notification intended for {user.email} ---")
-        if os.environ.get("MAIL_USERNAME"):
-            mail.send(msg)
     except Exception as e:
         print(f"Email failed to send: {e}")
 
@@ -796,6 +830,9 @@ def add_payment_card():
     raw_num = (data.get("card_number") or data.get("cardNumber") or "").replace(" ", "")
     if not raw_num or len(raw_num) < 13:
         return jsonify({"error": "Valid card number is required."}), 400
+    last_four = re.sub(r"\D", "", raw_num)[-4:]
+    if len(last_four) != 4:
+        return jsonify({"error": "Valid card number is required."}), 400
 
     exp_raw = data.get("expiration_date") or data.get("expirationDate") or ""
     try:
@@ -811,6 +848,7 @@ def add_payment_card():
     card = PaymentCard(
         customer_id=user.user_id,
         card_number_encrypted=enc,
+        last_four=last_four,
         expiration_date=exp_date,
         billing_street=data.get("billing_street") or data.get("billingStreet") or "",
         billing_city=data.get("billing_city") or data.get("billingCity") or "",
@@ -823,14 +861,43 @@ def add_payment_card():
     db.session.commit()
 
     try:
-        msg = Message("Your Profile Was Updated", recipients=[user.email])
-        msg.body = f"Hi {user.first_name},\n\nA payment card was added to your account."
-        if os.environ.get("MAIL_USERNAME"):
-            mail.send(msg)
+        _send_email_or_log(
+            subject="Your Profile Was Updated",
+            recipients=[user.email],
+            body=f"Hi {user.first_name},\n\nA payment card was added to your account.",
+            demo_fallback_label=f"Payment card added notification intended for {user.email}",
+        )
     except Exception as e:
         print(f"Email failed to send: {e}")
 
     return jsonify({"message": "Card added.", "card": payment_card_to_public_dict(card)}), 201
+
+
+@app.get("/api/profile/payment-cards/<int:card_id>")
+def get_payment_card(card_id: int):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+
+    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
+    if not card:
+        return jsonify({"error": "Card not found."}), 404
+
+    plain = decrypt_card_number(card.card_number_encrypted)
+    return jsonify(
+        {
+            "card": {
+                "card_id": card.card_id,
+                "card_number": plain,
+                "expiration_date": card.expiration_date.isoformat() if card.expiration_date else None,
+                "billing_street": card.billing_street,
+                "billing_city": card.billing_city,
+                "billing_state": card.billing_state,
+                "billing_zip_code": card.billing_zip_code,
+                "billing_apt": card.billing_apt,
+            }
+        }
+    ), 200
 
 
 @app.put("/api/profile/payment-cards/<int:card_id>")
@@ -849,6 +916,9 @@ def update_payment_card(card_id: int):
         raw_num = (data.get("card_number") or data.get("cardNumber") or "").replace(" ", "")
         if raw_num and len(raw_num) >= 13:
             card.card_number_encrypted = encrypt_card_number(raw_num)
+            last_four = re.sub(r"\D", "", raw_num)[-4:]
+            if len(last_four) == 4:
+                card.last_four = last_four
 
     exp_raw = data.get("expiration_date") or data.get("expirationDate")
     if exp_raw:
@@ -881,10 +951,12 @@ def update_payment_card(card_id: int):
     db.session.commit()
 
     try:
-        msg = Message("Your Profile Was Updated", recipients=[user.email])
-        msg.body = f"Hi {user.first_name},\n\nA payment card on your account was updated."
-        if os.environ.get("MAIL_USERNAME"):
-            mail.send(msg)
+        _send_email_or_log(
+            subject="Your Profile Was Updated",
+            recipients=[user.email],
+            body=f"Hi {user.first_name},\n\nA payment card on your account was updated.",
+            demo_fallback_label=f"Payment card updated notification intended for {user.email}",
+        )
     except Exception as e:
         print(f"Email failed to send: {e}")
 
@@ -908,10 +980,12 @@ def delete_payment_card(card_id: int):
     db.session.commit()
 
     try:
-        msg = Message("Your Profile Was Updated", recipients=[user.email])
-        msg.body = f"Hi {user.first_name},\n\nA payment card was removed from your account."
-        if os.environ.get("MAIL_USERNAME"):
-            mail.send(msg)
+        _send_email_or_log(
+            subject="Your Profile Was Updated",
+            recipients=[user.email],
+            body=f"Hi {user.first_name},\n\nA payment card was removed from your account.",
+            demo_fallback_label=f"Payment card removed notification intended for {user.email}",
+        )
     except Exception as e:
         print(f"Email failed to send: {e}")
 

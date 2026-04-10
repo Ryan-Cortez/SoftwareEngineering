@@ -40,6 +40,8 @@ export type PaymentCardPublic = {
     billing_apt?: string | null;
 };
 
+export type PaymentCardPrivate = PaymentCardPublic;
+
 export type UserProfile = {
     firstName: string;
     lastName: string;
@@ -153,6 +155,15 @@ export async function addPaymentCard(payload: NewCardPayload): Promise<{ message
         message: data.message,
         card: normalizeCards([data.card])[0],
     };
+}
+
+export async function getPaymentCard(cardId: number): Promise<PaymentCardPrivate> {
+    const response = await fetch(`${API_BASE_URL}/api/profile/payment-cards/${cardId}`, {
+        method: "GET",
+        credentials: "include",
+    });
+    const data = await handleResponse<any>(response);
+    return normalizeCards([data.card])[0];
 }
 
 export async function updatePaymentCard(

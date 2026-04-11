@@ -95,6 +95,7 @@ export default function Profile() {
 
     const [profileError, setProfileError] = useState("");
     const [favoritesError, setFavoritesError] = useState("");
+    const [paymentError, setPaymentError] = useState("");
     const [saveMessage, setSaveMessage] = useState("");
     const [passwordError, setPasswordError] = useState("");
 
@@ -335,6 +336,55 @@ export default function Profile() {
         }
     }
 
+    function formatCardNumber(value: string) {
+        const digitsOnly = value.replace(/\D/g, "").slice(0, 16);
+        const groups = digitsOnly.match(/.{1,4}/g);
+        return groups ? groups.join(" ") : "";
+    }
+
+    function maskCardNumber(value: string) {
+        const digitsOnly = value.replace(/\D/g, "");
+        const lastFour = digitsOnly.slice(-4);
+        return `**** **** **** ${lastFour}`;
+    }
+
+    function handlAddPaymentMethod(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setPaymentError("");
+
+        if (paymentMethods.length >= 3) {
+            setPaymentError("You can store a maximum of 3 payment cards.");
+            return;
+        }
+
+        if (!newCardHolderName.trim() || !newCardNumber.trim() || !newExpiry.trim()) {
+            setPaymentError("Please complete all payment card fields.");
+            return;
+        }
+        const digitsOnly = newCardNumber.replace(/\D/g, "");
+        if (digitsOnly.length !== 16) {
+            setPaymentError("Card number must be 16 digits.");
+            return;
+        }
+
+        const newCard: PaymentMethod = {
+            id: Date.now(),
+            cardHolderName: newCardHolderName.trim(),
+            cardNumber: maskCardNumber(newCardNumber.trim()),
+            expiry: newExpiry.trim(),
+        };
+
+        setPaymentMethods((prev) => [...prev, newCard]);
+        setNewCardHolderName("");
+        setNewCardNumber("");
+        setNewExpiry("");
+    }
+
+    function handleRemovePaymentMethod(id: number) {
+        setPaymentMethods((prev) => prev.filter((card) => card.id !== id));
+        setPaymentError("");
+    }
+ 
     if (loadingProfile) {
         return <p style={{ padding: "24px" }}>Loading Profile...</p>;
     }

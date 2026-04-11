@@ -63,7 +63,7 @@ export default function AdminPortal() {
         </div>
 
         <p className="admin-subtitle">
-          Welcome, {first} {last}
+          Welcome, {user.first_name} {user.last_name}
         </p>
 
         <div className="admin-menu">

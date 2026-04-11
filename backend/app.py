@@ -144,25 +144,25 @@ class Movie(db.Model):
     reviews = db.relationship("Review", back_populates="movie", cascade="all, delete-orphan")
 
     def to_dict(self, *, include_shows: bool = False, include_contributors: bool = False) -> dict:
-    payload = {
-        "movie_id": self.movie_id,
-        "title": self.title,
-        "genre": self.genre,
-        "status": self.status,
-        "runtime": self.runtime,
-        "synopsis": self.synopsis,
-        "trailer_image_url": self.trailer_image_url,
-        "trailer_video_url": self.trailer_video_url,
-        "mpaa_rating": self.mpaa_rating,
-    }
-    if include_shows:
-        payload["shows"] = [s.to_dict() for s in self.shows]
-    if include_contributors:
-        payload["contributors"] = [
-            {"name": c.person_name, "role": c.role}
-            for c in self.contributors
-        ]
-    return payload
+        payload = {
+            "movie_id": self.movie_id,
+            "title": self.title,
+            "genre": self.genre,
+            "status": self.status,
+            "runtime": self.runtime,
+            "synopsis": self.synopsis,
+            "trailer_image_url": self.trailer_image_url,
+            "trailer_video_url": self.trailer_video_url,
+            "mpaa_rating": self.mpaa_rating,
+        }
+        if include_shows:
+            payload["shows"] = [s.to_dict() for s in self.shows]
+        if include_contributors:
+            payload["contributors"] = [
+                {"name": c.person_name, "role": c.role}
+                for c in self.contributors
+            ]
+        return payload
 
 
 class User(db.Model):

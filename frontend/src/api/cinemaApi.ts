@@ -16,6 +16,8 @@ export type Movie = {
 
 export type MovieDetails = Movie & {
     showtimes: string[]; // time of day (hardcoded)
+    directors?: string[];
+    actors?: string[];
 }
 
 export function normalizeMovie (raw: any): Movie {
@@ -45,6 +47,8 @@ export function normalizeMovie (raw: any): Movie {
       undefined,
     };
 }
+
+
 
 export async function getMovies( search: string = "", genre: string = "", showDate: string = ""): Promise<Movie[]> {
     const params = new URLSearchParams({
@@ -78,7 +82,19 @@ export async function getMovieById(id: number | string): Promise<MovieDetails> {
             }
           }).filter(Boolean)
         : ["2:00 PM", "5:00 PM", "8:00 PM"]);
-    return {...base, showtimes };
+
+    const directors = Array.isArray(raw.directors)
+          ? raw.directors : raw.director ? [raw.director] : [];
+
+    const actors = Array.isArray(raw.actors)
+          ? raw.actors 
+          : Array.isArray(raw.cast) ? raw.cast : typeof raw.actors === "string" 
+          ? raw.actors.split(",").map((name: string) => name.trim())
+          : typeof raw.cast === "string"
+          ? raw.cast.split(",").map((name: string) => name.trim())
+          : [];
+          
+    return {...base, showtimes, directors, actors };
 
     // this is not yet used because the booking page doe not use an id (just a prototype)
 }

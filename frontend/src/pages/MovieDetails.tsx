@@ -142,6 +142,19 @@ export default function MovieDetails() {
 
                         <p className="movie-details__description">{movie.description}</p>
 
+                        {movie.directors && movie.directors.length > 0 && (
+                            <p className="movie-details__credits">
+                                <strong>Director{movie.directors.length > 1 ? "s" : ""}:</strong>{" "}
+                                {movie.directors.join(", ")}
+                            </p>
+                        )}
+
+                        {movie.actors && movie.actors.length > 0 && (
+                            <p className="movie-details__credits">
+                                <strong>Actors:</strong> {movie.actors.join(", ")}
+                            </p>
+                        )}
+
                         <h3 className="movie-details__section-title">Trailer</h3>
                         <div className="movie-details__trailer">
                             {trailerEmbedUrl ? (

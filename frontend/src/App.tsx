@@ -12,6 +12,9 @@ import VerifyEmail from "./pages/VerifyEmail";
 import AdminPortal from "./pages/AdminPortal";
 import AdminSection from "./pages/AdminSection";
 import Profile from "./pages/Profile";
+import SeatSelection from "./pages/SeatSelection";
+import Checkout from "./pages/Checkout";
+import Payment from "./pages/Payment";
 
 export default function App() {
     return (
@@ -29,7 +32,11 @@ export default function App() {
                 <Route path="/admin" element={<AdminPortal />} />
                 <Route path="/admin/:section" element={<AdminSection />} />
                 <Route path="/search" element={<SearchAndFilter />} />
+
                 <Route path="/booking" element={<BookingPage />} />
+                <Route path="/seat-selection" element={<SeatSelection />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/payment" element={<Payment />} />
             </Routes>
         </>
     );

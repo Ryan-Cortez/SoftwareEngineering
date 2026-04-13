@@ -6,6 +6,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const redirectTo = (location.state as any)?.redirectTo;
+  const bookingData = (location.state as any)?.bookingData;
+
   const registered = (location.state as { registered?: boolean } | null)?.registered;
 
   const [email, setEmail] = useState("");
@@ -36,12 +40,20 @@ export default function Login() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("userEmail", data.user.email);
 
       if (data.user.role === "admin") {
         navigate("/admin");
-      } else {
-        navigate("/");
+        return;
+      } 
+      
+      if (redirectTo === "/checkout" && bookingData) {
+        navigate("/checkout", { state: bookingData });
+        return;
       }
+
+      navigate("/");
+      
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

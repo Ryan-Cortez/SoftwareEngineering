@@ -39,6 +39,7 @@ export default function MovieDetails() {
 
     useEffect(() => {
         let cancelled = false;
+
         async function load() {
             setError(null);
             try {
@@ -91,6 +92,8 @@ export default function MovieDetails() {
 
     if (error) return <div> {error} </div>;
     if (!movie) return <div>Loading...</div>;
+
+    const showtimes = movie.showtimes?.length ? movie.showtimes : ["2:00 PM", "5:00 PM", "8:00 PM"];
 
     return (
         <main className="page">
@@ -147,6 +150,7 @@ export default function MovieDetails() {
                                     height="360"
                                     src={trailerEmbedUrl}
                                     allowFullScreen
+                                    title={`${movie.title} Trailer`}
                                 />
                             ) : (
                                 <p>Trailer not available.</p>
@@ -155,18 +159,25 @@ export default function MovieDetails() {
 
                         <h3 className="movie-details__section-title">Showtimes</h3>
                         <div className="movie-details__showtimes">
-                            {(movie.showtimes?.length ? movie.showtimes : ["2:00 PM", "5:00 PM", "8:00 PM"]).map(
+                            {showtimes.map(
                                 (t) => (
                                     <button
                                         key={t}
                                         type="button"
                                         className="booking_prototype_btn"
-                                        onClick={() => navigate(`/booking`)}
-                                    >
-                                        {t}
-                                    </button>
-                                )
-                            )}
+                                        onClick={() => navigate("/booking", {
+                                            state: { 
+                                                movieId: movie.id, 
+                                                movieTitle: movie.title,
+                                                showtime: t,
+                                                poster: movie.posterUrl,
+                                            },
+                                        })
+                                    }
+                                >
+                                    {t}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

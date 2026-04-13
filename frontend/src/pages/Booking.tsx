@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import "../styles/booking.css";
+import { useLocation , useNavigate } from "react-router-dom";
 
 type SeatStatus = "available" | "selected" | "taken";
 
@@ -11,6 +12,7 @@ type Seat = {
 };
 
 type BookingPageProps = {
+  movieId?: number;
   movieTitle?: string;
   showtime?: string;
   poster?: string;
@@ -43,14 +45,20 @@ function generateSeats(): Seat[] {
   return seats;
 }
 
-export default function BookingPage({
-  movieTitle = "Captain America: Brave New World",
-  showtime = "7:30 PM",
-  poster = "https://via.placeholder.com/300x450?text=Movie+Poster",
-}: BookingPageProps) {
+export default function BookingPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const state = (location.state as BookingPageProps | null) ?? {};
+
+  const movieId = state.movieId ?? null
+  const movieTitle = state.movieTitle ?? "CaptainAmerica: Brave New World";
+  const showtime = state.showtime ?? "7:30 PM";
+  const poster = state.poster ?? "https://via.placeholder.com/300x450?text=No+Image"; 
+
   const [adultQty, setAdultQty] = useState<number>(1);
   const [childQty, setChildQty] = useState<number>(0);
   const [seniorQty, setSeniorQty] = useState<number>(0);
+  const [error, setError] = useState<string>("");
   const [seats, setSeats] = useState<Seat[]>(generateSeats());
 
   const totalTickets = adultQty + childQty + seniorQty;
@@ -86,6 +94,32 @@ export default function BookingPage({
     );
   };
 
+  function handleContinue() {
+  setError("");
+  
+  if (totalTickets === 0) {
+    setError("Please select at least one ticket.");
+    return;
+  }
+  navigate("/seat-selection", {
+    state: {
+      movieId,
+      movieTitle,
+      showtime,
+      poster,
+      adultQty,
+      childQty,
+      seniorQty,
+      prices: {
+        adult: ADULT_PRICE,
+        child: CHILD_PRICE,
+        senior: SENIOR_PRICE,
+      },
+      subtotal,
+    },
+  });
+}
+
   const handleQtyChange = (
     value: string,
     setter: React.Dispatch<React.SetStateAction<number>>
@@ -103,6 +137,7 @@ export default function BookingPage({
   const serviceFee = totalTickets > 0 ? 2.5 : 0;
   const total = subtotal + serviceFee;
 
+  
   return (
     <div className="booking-page">
       <div className="booking-container">
@@ -165,8 +200,14 @@ export default function BookingPage({
 
             <p className="seat-limit-note">
               Select up to <strong>{totalTickets}</strong> seat
-              {totalTickets === 1 ? "" : "s"}.
+              {totalTickets === 1 ? "" : "s"} on the next pag.
             </p>
+
+            {error && (
+              <p style={{ color: "crimson", marginTop: "12px" }}>{error}</p>
+            )}
+            <button className="continue-btn" type="button" onClick={handleContinue} style={{ marginTop: "16px" }}>Continue to Seat Selection</button>
+            
           </div>
 
           <div className="seating-card">

@@ -1,4 +1,4 @@
-export type MovieStatus = "CURRENTLY_RUNNING" | "COMING_SOON";
+export type MovieStatus = "CURRENTLY_RUNNING" | "COMING_SOON" | "ARCHIVED";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -12,6 +12,7 @@ export type Movie = {
     genre: string;
     status: MovieStatus;
     showDate?: string; // YYYY-MM-DD
+    runtime?: number; // in minutes
 }
 
 export type MovieDetails = Movie & {
@@ -45,6 +46,12 @@ export function normalizeMovie (raw: any): Movie {
       raw.showDate ??
       raw.show_date ??
       undefined,
+    runtime:
+      typeof raw.runtime === "number"
+        ? raw.runtime
+        : raw.runtime != null
+        ? Number(raw.runtime)
+        : undefined,
     };
 }
 
@@ -83,17 +90,27 @@ export async function getMovieById(id: number | string): Promise<MovieDetails> {
           }).filter(Boolean)
         : ["2:00 PM", "5:00 PM", "8:00 PM"]);
 
-    const directors = Array.isArray(raw.directors)
-          ? raw.directors : raw.director ? [raw.director] : [];
+    const contributors = Array.isArray(raw.contributors) ? raw.contributors : [];
 
-    const actors = Array.isArray(raw.actors)
-          ? raw.actors 
-          : Array.isArray(raw.cast) ? raw.cast : typeof raw.actors === "string" 
-          ? raw.actors.split(",").map((name: string) => name.trim())
-          : typeof raw.cast === "string"
-          ? raw.cast.split(",").map((name: string) => name.trim())
-          : [];
-          
+    const directors = contributors
+      .filter((c: any) =>
+        String(c.role ?? "").toLowerCase().includes("director")
+      )
+      .map((c: any) => String(c.name ?? "").trim())
+      .filter(Boolean);
+
+    const actors = contributors
+      .filter((c: any) => {
+        const role = String(c.role ?? "").toLowerCase();
+        return (
+          role.includes("actor") ||
+          role.includes("actress") ||
+          role.includes("cast")
+        );
+      })
+    .map((c: any) => String(c.name ?? "").trim())
+    .filter(Boolean);
+
     return {...base, showtimes, directors, actors };
 
     // this is not yet used because the booking page doe not use an id (just a prototype)

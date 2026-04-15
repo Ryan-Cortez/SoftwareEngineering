@@ -8,6 +8,7 @@ Software Engineering Cinema E-Booking System Term Project
 4. flask cors - $ py -m pip install flask-cors
 5. python dotenv - $ py -m pip install python-dotenv
 6. mysql connector - $ py -m pip install mysql-connector-python
+7. cryptography - $ py -m pip install cryptography
 
 ## How to run:
 

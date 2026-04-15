@@ -9,12 +9,20 @@ import Navbar from "./components/navbar";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
-import AdminPortal from "./pages/AdminPortal";
-import AdminSection from "./pages/AdminSection";
+
 import Profile from "./pages/Profile";
 import SeatSelection from "./pages/SeatSelection";
 import Checkout from "./pages/Checkout";
 import Payment from "./pages/Payment";
+// admin imports
+import AdminPortal from "./pages/AdminPortal";
+import AdminSection from "./pages/AdminSection";
+import ManageMovies from "./pages/ManageMovies";
+import AddMovie from "./pages/AddMovie";
+import ManageShowtimes from "./pages/ManageShowtimes";
+import AddShowtime from "./pages/AddShowtime";
+import ManagePromotions from "./pages/ManagePromotions";
+import ManageUsers from "./pages/ManageUsers";
 
 export default function App() {
     return (
@@ -37,6 +45,13 @@ export default function App() {
                 <Route path="/seat-selection" element={<SeatSelection />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/payment" element={<Payment />} />
+
+                <Route path="/admin/movies" element={<ManageMovies />} />
+                <Route path="/admin/movies/add" element={<AddMovie />} />
+                <Route path="/admin/showtimes" element={<ManageShowtimes />} />
+                <Route path="/admin/showtimes/add" element={<AddShowtime />} />
+                <Route path="/admin/promotions" element={<ManagePromotions />} />
+                <Route path="/admin/users" element={<ManageUsers />} />
             </Routes>
         </>
     );

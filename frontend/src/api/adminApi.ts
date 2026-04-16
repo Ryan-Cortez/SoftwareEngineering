@@ -6,15 +6,22 @@ async function parseJsonResponse<T>(res: Response, fallbackMessage: string): Pro
   const data = text ? JSON.parse(text) : {};
 
   if (!res.ok) {
+    const obj = typeof data === "object" && data !== null ? (data as { message?: unknown; error?: unknown }) : null;
     const message =
-      typeof data === "object" && data !== null && "message" in data
-        ? String((data as { message?: unknown }).message ?? fallbackMessage)
-        : fallbackMessage;
+      obj && "message" in obj && obj.message != null && String(obj.message).trim() !== ""
+        ? String(obj.message)
+        : obj && "error" in obj && obj.error != null && String(obj.error).trim() !== ""
+          ? String(obj.error)
+          : fallbackMessage;
     throw new Error(message);
   }
 
   return data as T;
 }
+
+const fetchDefaults: RequestInit = {
+  credentials: "include",
+};
 
 export type AdminUser = {
   id: number;
@@ -71,6 +78,7 @@ export type Promotion = {
 
 export async function createMovie(input: CreateMovieInput): Promise<Movie> {
   const res = await fetch(`${API_BASE_URL}/api/movies`, {
+    ...fetchDefaults,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -82,7 +90,7 @@ export async function createMovie(input: CreateMovieInput): Promise<Movie> {
 }
 
 export async function getShowtimes(): Promise<Showtime[]> {
-  const res = await fetch(`${API_BASE_URL}/api/showtimes`);
+  const res = await fetch(`${API_BASE_URL}/api/showtimes`, fetchDefaults);
   const data = await parseJsonResponse<Showtime[] | { showtimes?: Showtime[] }>(
     res,
     "Failed to load showtimes"
@@ -93,6 +101,7 @@ export async function getShowtimes(): Promise<Showtime[]> {
 
 export async function createShowtime(input: CreateShowtimeInput): Promise<Showtime> {
   const res = await fetch(`${API_BASE_URL}/api/showtimes`, {
+    ...fetchDefaults,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -104,7 +113,7 @@ export async function createShowtime(input: CreateShowtimeInput): Promise<Showti
 }
 
 export async function getShowrooms(): Promise<Showroom[]> {
-  const res = await fetch(`${API_BASE_URL}/api/showrooms`);
+  const res = await fetch(`${API_BASE_URL}/api/showrooms`, fetchDefaults);
   const data = await parseJsonResponse<Showroom[] | { showrooms?: Showroom[] }>(
     res,
     "Failed to load showrooms"
@@ -114,7 +123,7 @@ export async function getShowrooms(): Promise<Showroom[]> {
 }
 
 export async function getUsers(): Promise<AdminUser[]> {
-  const res = await fetch(`${API_BASE_URL}/api/users`);
+  const res = await fetch(`${API_BASE_URL}/api/users`, fetchDefaults);
   const data = await parseJsonResponse<AdminUser[] | { users?: AdminUser[] }>(
     res,
     "Failed to load users"
@@ -124,7 +133,7 @@ export async function getUsers(): Promise<AdminUser[]> {
 }
 
 export async function getPromotions(): Promise<Promotion[]> {
-  const res = await fetch(`${API_BASE_URL}/api/promotions`);
+  const res = await fetch(`${API_BASE_URL}/api/promotions`, fetchDefaults);
   const data = await parseJsonResponse<Promotion[] | { promotions?: Promotion[] }>(
     res,
     "Failed to load promotions"

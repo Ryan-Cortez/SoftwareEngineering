@@ -160,7 +160,7 @@ export default function Checkout() {
                         </div>
                     </section>
 
-                    <aside style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px", background: "#fff", height: "fit-content" }}>
+                    <aside style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px", height: "fit-content" }}>
                         <h2>Order Summary</h2>
                         <div style={{ display: "grid", gap: "10px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>

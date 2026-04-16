@@ -690,3 +690,167 @@
   color: #b30000;
   font-weight: 600;
 }
+
+/* =========================
+   AUTH PAGES
+   ========================= */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #111111, #1c1c1c);
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.auth-page .auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+}
+
+.auth-page .auth-title {
+  margin: 0 0 8px;
+  font-size: 2rem;
+  color: #b30000;
+  text-align: center;
+}
+
+.auth-page .auth-subtitle {
+  margin: 0 0 24px;
+  color: #555;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.auth-page .auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-page .auth-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #222;
+}
+
+.auth-page .auth-field input,
+.auth-page .auth-field select,
+.auth-page .auth-field textarea {
+  color: #111;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-page .auth-field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.auth-page .auth-field input:focus,
+.auth-page .auth-field select:focus,
+.auth-page .auth-field textarea:focus {
+  outline: none;
+  border-color: #b30000;
+  box-shadow: 0 0 0 3px rgba(179, 0, 0, 0.12);
+}
+
+.auth-page .auth-button {
+  margin-top: 8px;
+  padding: 12px;
+  background: #b30000;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.auth-page .auth-button:hover {
+  background: #8f0000;
+  transform: translateY(-1px);
+}
+
+.auth-page .auth-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-page .auth-error {
+  margin: 0;
+  color: #d00000;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.auth-page .auth-success {
+  margin: 0;
+  color: #0a7a2f;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.auth-page .auth-switch {
+  margin-top: 18px;
+  text-align: center;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.auth-page .auth-switch a {
+  color: #b30000;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-page .auth-switch a:hover {
+  text-decoration: underline;
+}
+
+/* wider auth cards used in admin add forms */
+.auth-page .auth-card[style] {
+  max-width: 650px;
+}
+
+@media (max-width: 768px) {
+  .admin-page .admin-menu {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-page .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  main.page .movies-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .navbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .navbar .navbar-left,
+  .navbar .navbar-right {
+    flex-wrap: wrap;
+  }
+}

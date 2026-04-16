@@ -456,6 +456,66 @@ def get_current_user():
     return User.query.get(uid)
 
 
+def api_error(message: str, status: int = 400):
+    """JSON error body for API + frontend (parseJsonResponse also reads `message`)."""
+    return jsonify({"error": message, "message": message}), status
+
+
+def require_login():
+    user = get_current_user()
+    if not user:
+        return None, api_error("Not logged in.", 401)
+    return user, None
+
+
+def require_admin():
+    user, err = require_login()
+    if err:
+        return None, err
+    if user.admin is None:
+        return None, api_error("Admin access required.", 403)
+    return user, None
+
+
+def _parse_start_time(data: dict):
+    """
+    Accept either:
+      - start_time: ISO string (preferred), or
+      - date + time: "YYYY-MM-DD" + "HH:MM" (or "HH:MM:SS")
+    Returns (datetime | None, error_response | None)
+    """
+    start_time_raw = (data.get("start_time") or data.get("startTime") or "").strip()
+    if start_time_raw:
+        try:
+            # Accept "YYYY-MM-DD HH:MM:SS" by converting to ISO-ish.
+            normalized = start_time_raw.replace(" ", "T")
+            return datetime.fromisoformat(normalized), None
+        except ValueError:
+            return None, api_error("start_time must be an ISO datetime like 2026-04-14T19:30:00", 400)
+
+    date_raw = (data.get("date") or data.get("show_date") or "").strip()
+    time_raw = (data.get("time") or data.get("show_time") or "").strip()
+    if date_raw or time_raw:
+        if not date_raw:
+            return None, api_error("date is required when time is provided", 400)
+        if not time_raw:
+            return None, api_error("time is required when date is provided", 400)
+        try:
+            d = datetime.strptime(date_raw, "%Y-%m-%d").date()
+        except ValueError:
+            return None, api_error("date must be YYYY-MM-DD", 400)
+        try:
+            t = datetime.strptime(time_raw, "%H:%M").time()
+        except ValueError:
+            try:
+                t = datetime.strptime(time_raw, "%H:%M:%S").time()
+            except ValueError:
+                return None, api_error("time must be HH:MM (24-hour)", 400)
+        return datetime.combine(d, t), None
+
+    return None, api_error("start_time is required", 400)
+
+
 def payment_card_to_public_dict(c: PaymentCard) -> dict:
     last4 = (c.last_four or "").strip()
     if last4 and len(last4) == 4:
@@ -476,6 +536,134 @@ def payment_card_to_public_dict(c: PaymentCard) -> dict:
 
 
 MAX_PAYMENT_CARDS = 3
+
+
+def _create_movie_from_request_data(data: dict):
+    """
+    Validates JSON for create-movie (admin UI + /api/movies POST).
+    Returns (Movie, None) or (None, error_response).
+    """
+    title = (data.get("title") or "").strip()
+    genre = (data.get("genre") or "").strip()
+    status = (data.get("status") or "").strip()
+
+    runtime_raw = data.get("runtime")
+    synopsis = (data.get("synopsis") or data.get("description") or "").strip() or None
+    trailer_image_url = (data.get("trailer_image_url") or data.get("posterUrl") or data.get("poster_url") or "").strip()
+    trailer_video_url = (data.get("trailer_video_url") or data.get("trailerUrl") or data.get("trailer_url") or "").strip()
+    mpaa_rating = (data.get("mpaa_rating") or data.get("rating") or "").strip() or None
+
+    if not title:
+        return None, api_error("title is required", 400)
+    if not genre:
+        return None, api_error("genre is required", 400)
+    if status not in ("CURRENTLY_RUNNING", "COMING_SOON", "ARCHIVED"):
+        return None, api_error("status must be one of CURRENTLY_RUNNING, COMING_SOON, ARCHIVED", 400)
+
+    if runtime_raw is None or runtime_raw == "":
+        runtime = 120
+    else:
+        try:
+            runtime = int(runtime_raw)
+        except Exception:
+            return None, api_error("runtime must be a number", 400)
+    if runtime <= 0:
+        return None, api_error("runtime must be greater than 0", 400)
+
+    if not mpaa_rating:
+        return None, api_error("rating is required", 400)
+
+    m = Movie(
+        title=title,
+        genre=genre,
+        status=status,
+        runtime=runtime,
+        synopsis=synopsis,
+        trailer_image_url=trailer_image_url or None,
+        trailer_video_url=trailer_video_url or None,
+        mpaa_rating=mpaa_rating,
+    )
+    return m, None
+
+
+def _movie_to_dict_with_id(m: Movie) -> dict:
+    d = m.to_dict(include_shows=False)
+    d["id"] = m.movie_id
+    return d
+
+
+def _showtime_to_frontend_dict(show: Show) -> dict:
+    movie = Movie.query.get(show.movie_id)
+    showroom = Showroom.query.get(show.showroom_id)
+    st = show.start_time
+    return {
+        "id": show.show_id,
+        "movie_title": movie.title if movie else "",
+        "show_date": st.strftime("%Y-%m-%d") if st else "",
+        "show_time": st.strftime("%H:%M") if st else "",
+        "showroom_name": showroom.showroom_name if showroom else "",
+    }
+
+
+def _post_showtime_common():
+    """Shared handler for POST /api/admin/shows and POST /api/showtimes."""
+    _user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json() or {}
+    movie_id_raw = data.get("movie_id") or data.get("movieId")
+    showroom_id_raw = data.get("showroom_id") or data.get("showroomId")
+
+    try:
+        movie_id = int(movie_id_raw)
+    except Exception:
+        return api_error("movie_id is required and must be a number", 400)
+
+    try:
+        showroom_id = int(showroom_id_raw)
+    except Exception:
+        return api_error("showroom_id is required and must be a number", 400)
+
+    merged = dict(data)
+    if data.get("show_date") and data.get("show_time"):
+        merged["date"] = data["show_date"]
+        merged["time"] = data["show_time"]
+
+    start_time, st_err = _parse_start_time(merged)
+    if st_err:
+        return st_err
+
+    movie = Movie.query.get(movie_id)
+    if not movie:
+        return api_error("Movie not found", 404)
+
+    showroom = Showroom.query.get(showroom_id)
+    if not showroom or not showroom.is_active:
+        return api_error("Showroom not found", 404)
+
+    existing = Show.query.filter_by(showroom_id=showroom_id, start_time=start_time).first()
+    if existing:
+        return (
+            jsonify(
+                {
+                    "error": "Scheduling conflict: that showroom already has a show at that time.",
+                    "message": "Scheduling conflict: that showroom already has a show at that time.",
+                    "conflict": existing.to_dict(),
+                }
+            ),
+            409,
+        )
+
+    show = Show(movie_id=movie_id, showroom_id=showroom_id, start_time=start_time)
+    db.session.add(show)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return api_error("Scheduling conflict: that showroom already has a show at that time.", 409)
+
+    return jsonify(_showtime_to_frontend_dict(show)), 201
 
 
 @app.get("/api/movies")
@@ -507,6 +695,229 @@ def get_movies():
 def get_movie(movie_id: int):
     movie = Movie.query.get_or_404(movie_id)
     return jsonify(movie.to_dict(include_shows=True, include_contributors=True))
+
+
+@app.post("/api/movies")
+def create_movie_for_admin_ui():
+    """Frontend Add Movie uses POST /api/movies (same path as list; different method)."""
+    _user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json() or {}
+    m, err = _create_movie_from_request_data(data)
+    if err:
+        return err
+
+    db.session.add(m)
+    db.session.commit()
+    return jsonify(_movie_to_dict_with_id(m)), 201
+
+
+@app.get("/api/showrooms")
+def list_showrooms():
+    # Frontend expects { id, name }; keep snake_case ids for older clients.
+    showrooms = Showroom.query.filter_by(is_active=True).order_by(Showroom.showroom_id.asc()).all()
+    return jsonify(
+        [
+            {
+                "id": s.showroom_id,
+                "name": s.showroom_name,
+                "showroom_id": s.showroom_id,
+                "showroom_name": s.showroom_name,
+                "is_active": bool(s.is_active),
+            }
+            for s in showrooms
+        ]
+    )
+
+
+@app.get("/api/showtimes")
+def list_showtimes_for_admin_ui():
+    _user, err = require_admin()
+    if err:
+        return err
+
+    rows = (
+        db.session.query(Show, Movie, Showroom)
+        .join(Movie, Movie.movie_id == Show.movie_id)
+        .join(Showroom, Showroom.showroom_id == Show.showroom_id)
+        .order_by(Show.start_time.asc())
+        .all()
+    )
+    out = [_showtime_to_frontend_dict(show) for show, _movie, _sr in rows]
+    return jsonify(out)
+
+
+@app.post("/api/showtimes")
+def create_showtime_for_admin_ui():
+    """Frontend Add Showtime uses POST /api/showtimes with show_date + show_time."""
+    return _post_showtime_common()
+
+
+@app.get("/api/users")
+def list_users_for_admin_ui():
+    _user, err = require_admin()
+    if err:
+        return err
+
+    users = User.query.order_by(User.user_id.asc()).all()
+    out = []
+    for u in users:
+        role = "admin" if u.admin is not None else "customer"
+        out.append(
+            {
+                "id": u.user_id,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "email": u.email,
+                "role": role,
+                "status": u.status,
+            }
+        )
+    return jsonify(out)
+
+
+@app.get("/api/promotions")
+def list_promotions_for_admin_ui():
+    _user, err = require_admin()
+    if err:
+        return err
+
+    promos = Promotion.query.order_by(Promotion.expiration_date.desc()).all()
+    out = []
+    for p in promos:
+        end = p.expiration_date.isoformat() if p.expiration_date else None
+        out.append(
+            {
+                "id": p.promotion_id,
+                "title": p.code,
+                "description": p.description,
+                "discount_code": p.code,
+                "start_date": None,
+                "end_date": end,
+            }
+        )
+    return jsonify(out)
+
+
+@app.post("/api/admin/movies")
+def admin_add_movie():
+    _user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json() or {}
+    m, err = _create_movie_from_request_data(data)
+    if err:
+        return err
+
+    db.session.add(m)
+    db.session.commit()
+    return jsonify(_movie_to_dict_with_id(m)), 201
+
+
+@app.post("/api/admin/shows")
+def admin_add_showtime():
+    return _post_showtime_common()
+
+
+@app.post("/api/admin/promotions")
+def admin_add_promotion():
+    _user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json() or {}
+    code = (data.get("code") or "").strip()
+    description = (data.get("description") or "").strip() or None
+    discount_type = (data.get("discount_type") or data.get("discountType") or "").strip() or "Percent"
+    discount_value_raw = data.get("discount_value") if "discount_value" in data else data.get("discountValue")
+    expiration_raw = (data.get("expiration_date") or data.get("expirationDate") or "").strip()
+
+    if not code:
+        return jsonify({"error": "code is required"}), 400
+    if discount_type not in ("Percent", "Amount"):
+        return jsonify({"error": "discount_type must be Percent or Amount"}), 400
+
+    try:
+        discount_value = float(discount_value_raw)
+    except Exception:
+        return jsonify({"error": "discount_value is required and must be a number"}), 400
+    if discount_value < 0:
+        return jsonify({"error": "discount_value must be >= 0"}), 400
+
+    if not expiration_raw:
+        return jsonify({"error": "expiration_date is required"}), 400
+    try:
+        expiration_date = datetime.fromisoformat(expiration_raw.replace(" ", "T"))
+    except ValueError:
+        return jsonify({"error": "expiration_date must be an ISO datetime like 2026-12-31T23:59:59"}), 400
+
+    if Promotion.query.filter_by(code=code).first():
+        return jsonify({"error": "Promotion code already exists"}), 409
+
+    p = Promotion(
+        code=code,
+        description=description,
+        discount_type=discount_type,
+        discount_value=discount_value,
+        expiration_date=expiration_date,
+    )
+    db.session.add(p)
+    db.session.commit()
+
+    return (
+        jsonify(
+            {
+                "promotion_id": p.promotion_id,
+                "code": p.code,
+                "description": p.description,
+                "discount_type": p.discount_type,
+                "discount_value": float(p.discount_value),
+                "expiration_date": p.expiration_date.isoformat() if p.expiration_date else None,
+            }
+        ),
+        201,
+    )
+
+
+@app.post("/api/admin/promotions/<int:promotion_id>/send")
+def admin_send_promotion_email(promotion_id: int):
+    _user, err = require_admin()
+    if err:
+        return err
+
+    promo = Promotion.query.get(promotion_id)
+    if not promo:
+        return jsonify({"error": "Promotion not found"}), 404
+
+    # Send to subscribed users only.
+    q = (
+        db.session.query(User.email, User.first_name)
+        .join(Customer, Customer.customer_id == User.user_id)
+        .filter(Customer.promotion_opt_in.is_(True))
+        .filter(User.status == "Active")
+        .filter(User.is_verified.is_(True))
+    )
+    recipients = [row.email for row in q.all() if (row.email or "").strip()]
+
+    body = (
+        f"Promotion: {promo.code}\n\n"
+        f"{promo.description or ''}\n\n"
+        f"Discount type: {promo.discount_type}\n"
+        f"Discount value: {promo.discount_value}\n"
+        f"Expires: {promo.expiration_date.isoformat() if promo.expiration_date else ''}\n"
+    )
+
+    _send_email_or_log(
+        subject=f"New Promotion: {promo.code}",
+        recipients=recipients,
+        body=body,
+        demo_fallback_label=f"Promotion email would go to: {', '.join(recipients) if recipients else '(no subscribers)'}",
+    )
+
+    return jsonify({"message": "Promotion email sent (or logged in demo mode).", "recipient_count": len(recipients)}), 200
 
 
 @app.post("/api/auth/register")

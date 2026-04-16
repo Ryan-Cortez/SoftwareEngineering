@@ -125,7 +125,7 @@ export default function Checkout() {
                 style = {{ maxWidth: "1100px", margin: "0 auto", padding: "24px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
                     <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px", background: "#fff",}}>
                         <h1 style={{ marginTop: 0 }}>Checkout</h1>
-                        <p> Review You rorder summary and confirm your email before proceeding to payment.</p>
+                        <p> Review your order summary and confirm your email before proceeding to payment.</p>
 
                         {error && <p style={{ color: "crimson" }}>{error}</p>}
 

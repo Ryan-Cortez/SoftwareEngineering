@@ -22,28 +22,6 @@ const ADULT_PRICE = 12.99;
 const CHILD_PRICE = 8.99;
 const SENIOR_PRICE = 9.99;
 
-const rows = ["A", "B", "C", "D", "E", "F"];
-const seatsPerRow = 8;
-
-function generateSeats(): Seat[] {
-  const takenSeats = new Set(["A3", "A4", "B6", "C2", "D7", "E5"]);
-
-  const seats: Seat[] = [];
-
-  for (const row of rows) {
-    for (let i = 1; i <= seatsPerRow; i++) {
-      const id = `${row}${i}`;
-      seats.push({
-        id,
-        row,
-        number: i,
-        status: takenSeats.has(id) ? "taken" : "available",
-      });
-    }
-  }
-
-  return seats;
-}
 
 export default function BookingPage() {
   const navigate = useNavigate();
@@ -59,40 +37,13 @@ export default function BookingPage() {
   const [childQty, setChildQty] = useState<number>(0);
   const [seniorQty, setSeniorQty] = useState<number>(0);
   const [error, setError] = useState<string>("");
-  const [seats, setSeats] = useState<Seat[]>(generateSeats());
 
   const totalTickets = adultQty + childQty + seniorQty;
-
-  const selectedSeats = useMemo(
-    () => seats.filter((seat) => seat.status === "selected"),
-    [seats]
-  );
 
   const subtotal = useMemo(() => {
     return adultQty * ADULT_PRICE + childQty * CHILD_PRICE + seniorQty * SENIOR_PRICE;
   }, [adultQty, childQty, seniorQty]);
 
-  const toggleSeat = (seatId: string) => {
-    setSeats((prev) =>
-      prev.map((seat) => {
-        if (seat.id !== seatId) return seat;
-        if (seat.status === "taken") return seat;
-
-        // optional limit: cannot select more seats than tickets
-        if (
-          seat.status === "available" &&
-          selectedSeats.length >= totalTickets
-        ) {
-          return seat;
-        }
-
-        return {
-          ...seat,
-          status: seat.status === "selected" ? "available" : "selected",
-        };
-      })
-    );
-  };
 
   function handleContinue() {
   setError("");
@@ -210,43 +161,6 @@ export default function BookingPage() {
             
           </div>
 
-          <div className="seating-card">
-            <div className="seating-header">
-              <h2>Select Seats</h2>
-              <div className="seat-legend">
-                <span><i className="seat-demo available"></i> Available</span>
-                <span><i className="seat-demo selected"></i> Selected</span>
-                <span><i className="seat-demo taken"></i> Taken</span>
-              </div>
-            </div>
-
-            <div className="screen">SCREEN</div>
-
-            <div className="seat-grid">
-              {rows.map((row) => (
-                <div className="seat-row" key={row}>
-                  <div className="row-label">{row}</div>
-
-                  {seats
-                    .filter((seat) => seat.row === row)
-                    .map((seat, index) => (
-                      <button
-                        key={seat.id}
-                        className={`seat ${seat.status} ${
-                          index === 3 ? "seat-gap-right" : ""
-                        }`}
-                        onClick={() => toggleSeat(seat.id)}
-                        disabled={seat.status === "taken"}
-                        aria-label={`Seat ${seat.id}`}
-                        type="button"
-                      >
-                        {seat.number}
-                      </button>
-                    ))}
-                </div>
-              ))}
-            </div>
-          </div>
         </section>
 
         <aside className="booking-right">
@@ -288,15 +202,6 @@ export default function BookingPage() {
             <div className="summary-line total-line">
               <span>Total</span>
               <span>${total.toFixed(2)}</span>
-            </div>
-
-            <div className="selected-seats-box">
-              <h3>Selected Seats</h3>
-              {selectedSeats.length > 0 ? (
-                <p>{selectedSeats.map((seat) => seat.id).join(", ")}</p>
-              ) : (
-                <p>No seats selected yet.</p>
-              )}
             </div>
 
             <button className="continue-btn" type="button">

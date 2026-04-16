@@ -123,7 +123,7 @@ export default function Checkout() {
         <main className="checkout-page">
             <div className="checkout-container"
                 style = {{ maxWidth: "1100px", margin: "0 auto", padding: "24px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
-                    <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px", background: "#fff",}}>
+                    <section style={{ border: "1px solid #ddd", borderRadius: "12px", padding: "24px",}}>
                         <h1 style={{ marginTop: 0 }}>Checkout</h1>
                         <p> Review your order summary and confirm your email before proceeding to payment.</p>
 

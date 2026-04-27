@@ -204,9 +204,6 @@ export default function BookingPage() {
               <span>${total.toFixed(2)}</span>
             </div>
 
-            <button className="continue-btn" type="button">
-              Continue
-            </button>
           </div>
         </aside>
       </div>

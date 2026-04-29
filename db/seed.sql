@@ -31,7 +31,7 @@ INSERT INTO `movie` (`title`, `genre`, `status`, `runtime`, `synopsis`, `trailer
 'R'),
 
 ('Scarface', 'Crime', 'CURRENTLY_RUNNING', 170,
-'A Cuban immigrant rises to power in Miami’s drug underworld.',
+'A Cuban immigrant rises to power in the Miami drug underworld.',
 'https://www.themoviedb.org/t/p/w1280/iQ5ztdjvteGeboxtmRdXEChJOHh.jpg',
 'https://youtu.be/7pQQHnqBa2E?si=XGvPZsTl6YPExQPy',
 'R'),
@@ -97,7 +97,7 @@ INSERT INTO `movie` (`title`, `genre`, `status`, `runtime`, `synopsis`, `trailer
 'PG-13'),
 
 ('Crazy Rich Asians', 'Rom-Com', 'COMING_SOON', 120,
-'A woman discovers her boyfriend’s family is extraordinarily wealthy.',
+'A woman discovers her boyfriend and his family are extraordinarily wealthy.',
 'https://www.themoviedb.org/t/p/w1280/1XxL4LJ5WHdrcYcihEZUCgNCpAW.jpg',
 'https://youtu.be/ZQ-YX-5bAs0?si=rFqcjtk5r8wUtYDZ',
 'PG-13'),
@@ -112,7 +112,7 @@ INSERT INTO `movie` (`title`, `genre`, `status`, `runtime`, `synopsis`, `trailer
 'R'),
 
 ('Anchorman: The Legend of Ron Burgundy', 'Comedy', 'CURRENTLY_RUNNING', 94,
-'A news anchor’s ego is challenged by a female journalist.',
+'A female journalist challenges the ego of an established news anchor.',
 'https://www.themoviedb.org/t/p/w1280/Rdzsh3s6waplhSD7PUaBJovB7v.jpg',
 'https://youtu.be/QvJ1K0_JzFI?si=CoQUf4qpVRIYs330',
 'PG-13'),
@@ -157,7 +157,7 @@ INSERT INTO `movie` (`title`, `genre`, `status`, `runtime`, `synopsis`, `trailer
 'G'),
 
 ('Toy Story', 'Animation', 'CURRENTLY_RUNNING', 81,
-'Toys come to life when humans aren’t looking.',
+'Toys come to life when humans are not looking.',
 'https://www.themoviedb.org/t/p/w1280/uXDfjJbdP4ijW5hWSBrPrlKpxab.jpg',
 'https://youtu.be/v-PjgYDrg70?si=Y_iYD3ZcnJwfBYL2',
 'G'),
@@ -475,6 +475,52 @@ INSERT INTO `show` (`movie_id`, `showroom_id`, `start_time`) VALUES
 (16, 2, '2026-04-23 16:00:00'),
 (28, 3, '2026-04-23 20:00:00');
 
+INSERT INTO `show` (`movie_id`, `showroom_id`, `start_time`) VALUES
+-- 2026-05-01
+(1, 1, '2026-05-01 13:00:00'),
+(11, 2, '2026-05-01 16:00:00'),
+(26, 3, '2026-05-01 19:30:00'),
+
+-- 2026-05-02
+(2, 1, '2026-05-02 12:30:00'),
+(16, 2, '2026-05-02 15:30:00'),
+(28, 3, '2026-05-02 20:00:00'),
+
+-- 2026-05-03
+(4, 1, '2026-05-03 13:00:00'),
+(12, 2, '2026-05-03 16:00:00'),
+(27, 3, '2026-05-03 19:30:00'),
+
+-- 2026-05-04
+(5, 1, '2026-05-04 14:00:00'),
+(17, 2, '2026-05-04 17:00:00'),
+(24, 3, '2026-05-04 19:30:00'),
+
+-- 2026-05-05
+(6, 1, '2026-05-05 13:30:00'),
+(13, 2, '2026-05-05 16:30:00'),
+(21, 3, '2026-05-05 19:00:00'),
+
+-- 2026-05-06
+(7, 1, '2026-05-06 13:00:00'),
+(19, 2, '2026-05-06 16:00:00'),
+(1, 3, '2026-05-06 19:30:00'),
+
+-- 2026-05-07
+(8, 1, '2026-05-07 12:00:00'),
+(21, 2, '2026-05-07 15:00:00'),
+(26, 3, '2026-05-07 19:00:00'),
+
+-- 2026-05-08
+(11, 1, '2026-05-08 13:00:00'),
+(16, 2, '2026-05-08 16:00:00'),
+(28, 3, '2026-05-08 21:00:00'),
+
+-- 2026-05-09
+(1, 1, '2026-05-09 13:00:00'),
+(12, 2, '2026-05-09 16:00:00'),
+(27, 3, '2026-05-09 19:30:00');
+
 
 INSERT INTO `seat` (`showroom_id`, `row_label`, `seat_number`) VALUES
 -- Showroom 1
@@ -648,7 +694,7 @@ INSERT INTO `booking` (
   1,  -- fee_id
   1.00,  -- booking_fee_amount
   0.00,  -- promotion_discount_amount
-  28.48,  -- total_amount
+  26.98,  -- total_amount
   'ABCDEFG1234567'   -- payment_reference
 ),
 ( -- VIK BOOKINGS  
@@ -660,7 +706,7 @@ INSERT INTO `booking` (
   1,  -- fee_id
   1.00,  -- booking_fee_amount
   0.00,  -- promotion_discount_amount
-  15.49,  -- total_amount
+  13.99,  -- total_amount
   'ABCDEFG1234568'   -- payment_reference
 ),
 (
@@ -672,7 +718,7 @@ INSERT INTO `booking` (
   1,  -- fee_id
   1.00,  -- booking_fee_amount
   0.00,  -- promotion_discount_amount
-  15.49,  -- total_amount
+  13.99,  -- total_amount
   'ABCDEFG1234569'   -- payment_reference
 ),
 (
@@ -684,6 +730,27 @@ INSERT INTO `booking` (
   1,  -- fee_id
   1.00,  -- booking_fee_amount
   0.00,  -- promotion_discount_amount
-  15.49,  -- total_amount
+  13.99,  -- total_amount
   'ABCDEFG1234560'   -- payment_reference
 );
+
+INSERT INTO `ticket` (
+  `type`,
+  `unit_price`,
+  `booking_id`,
+  `seat_id`,
+  `show_id`,
+  `showroom_id`
+) VALUES
+-- Booking 1: Ryan, show_id 1, showroom 1, 2 adult tickets
+('Adult', 12.99, 1, 1, 1, 1),
+('Adult', 12.99, 1, 2, 1, 1),
+
+-- Booking 2: Vik, show_id 3, showroom 3, 1 adult ticket
+('Adult', 12.99, 2, 97, 3, 3),
+
+-- Booking 3: Vik, show_id 9, showroom 3, 1 adult ticket
+('Adult', 12.99, 3, 98, 9, 3),
+
+-- Booking 4: Vik, show_id 12, showroom 3, 1 adult ticket
+('Adult', 12.99, 4, 99, 12, 3);

@@ -387,21 +387,21 @@ INSERT INTO `booking_fee` (`amount`) VALUES (1.00);
 INSERT INTO `user`
 (`first_name`, `last_name`, `email`, `phone_number`, `password_hash`, `is_verified`, `status`)
 VALUES
-('Nate',   'Williams', 'nrw82335@uga.edu', '2294155266', '$2b$12$BTKkOUxLy7tqIPbvoa8syOhgtLyiAMISJhBAT2M2A4VpHz2Sck7vO', TRUE,  'Active'),
-('Caleb',  'Elder',    'cme13163@uga.edu', '7066127923', '$2b$12$AWrPv5KhR0CL5ANAxrfTDe8elZuIPjaErCtowFaEfyNqduryzu6ga', TRUE,  'Active');
+('Caleb',  'Elder',    'cme13163@uga.edu', '7066127923', '$2b$12$AWrPv5KhR0CL5ANAxrfTDe8elZuIPjaErCtowFaEfyNqduryzu6ga', TRUE,  'Active'),
+('Karsen', 'Phillips', 'kap87953@uga.edu', '4045631098', '$2b$12$hjqeJBfwItCwbgooyexJL.kD/aSWNHyT43ksNR9C4u9tSP6RKAX2a', TRUE,  'Active'),
+('Ryan',   'Cortez',   'rmc57278@uga.edu', '7066313011', '$2b$12$8kVsKvKPZy2B2Zf6/Ohu9.waloAARzQH5bKmxXRc1Uf.CL97SDU3u', TRUE,  'Active'),
+('Vik',    'Gaddam',   'rg04555@uga.edu',  '4705609088', '$2b$12$17B6.Ru0TeKjIl7rCt/XcuNeq7AGTfFlAo0DiK6QyqGWshYTKvJi2', TRUE,  'Active');
 
 /*
-('Karsen', 'Phillips', 'kap87953@uga.edu', '4045631098', 'hashed_password_example', TRUE,  'Active'),
-('Ryan',   'Cortez',   'rmc57278@uga.edu', '7066313011', 'hashed_password_example', TRUE,  'Active'),
-
-('Ritvik', 'Gaddam',   'rg04555@uga.edu',  '4705609088', 'hashed_password_example', TRUE,  'Active'),
-('Jersey', 'Mike',     'naterwms@gmail.com', '1234567890', 'hashed_password_example', TRUE, 'Active');
+('Nate',   'Williams', 'nrw82335@uga.edu', '2294155266', '$2b$12$BTKkOUxLy7tqIPbvoa8syOhgtLyiAMISJhBAT2M2A4VpHz2Sck7vO', TRUE,  'Active'),
 */
 
 INSERT INTO `customer`
 (`customer_id`, `promotion_opt_in`)
 VALUES
-(2, TRUE);
+(2, TRUE),
+(3, TRUE),
+(4, TRUE);
 
 INSERT INTO `admin`
 (`admin_id`)
@@ -411,22 +411,28 @@ VALUES
 INSERT INTO `favorite_movie` 
 ( `customer_id`, `movie_id`)
 VALUES
-(2, 1),
-(2, 2),
-(2, 3);
+(3, 1),
+(3, 2),
+(3, 8),
+(4, 26),
+(4, 27),
+(4, 30);
 
 INSERT INTO `payment_card`
 (`customer_id`, `card_number`, `last_four`, `expiration_date`,
  `billing_street`, `billing_city`, `billing_state`, `billing_zip_code`, `billing_apt`)
 VALUES
-(2, 'encrypted_card_visa_1', '1234', '2027-05-01',
- '123 Oak St', 'Athens', 'GA', '30605', NULL),
+(3, 'gAAAAABp8hqMXa2_QVY0IbhJIImf6Xg_zYFCXCQWQlIn7z783jSldnJGACmJf67W6yOfqvg3WrigkCpThanzVUibOfhAq8AMN1q-7K_0qjE7o-vmwnnU4Nw=', '0708', '2027-05-01',
+ '123 Oak St', 'Athens', 'GA', '30606', NULL),
 
-(2, 'encrypted_card_mc_1', '5678', '2026-11-01',
- '456 Pine Ave', 'Atlanta', 'GA', '30303', 'Apt 2B'),
+(3, 'gAAAAABp8hn6JACFOJFccp2S3RMqoZONwMTm95U_bc39M2dvqx7iG4R6yJMNJaRbbD2or0wYfnQaD08xrih0_CH54S1v9KIm60UwdyogtItlMrhpqC_XGAs=', '4321', '2026-11-01',
+ '456 Pine Ave', 'Athens', 'GA', '30606', 'Apt 2B'),
 
-(2, 'encrypted_card_amex_1', '9012', '2028-08-01',
- '789 Maple Dr', 'Savannah', 'GA', '31401', NULL);
+(3, 'gAAAAABp8hCQp77xT98EDV8FjkpwH2-jE8O0t-GPBP0EGb4Pt0PYzu5six5OJtxVuUtfAYSMTJ8bC_uagQWSc4xRUe6EC4CPrlTqIHnq-7zX5q5SX57TJqo=', '5678', '2028-08-01',
+ '789 Maple Dr', 'Savannah', 'GA', '31401', NULL),
+ 
+ (4, 'gAAAAABp8iTBOXkKHKjpC-9r8Id0jZlhsjh1F-BwB_J0L4y1PYcp1N51F3MskH9y10z7cBsyjNvqQ_agoSgTpj_tPk7qXBZZFZ3uqKLM0pcpqxcFP8Ien08=', '1718', '2027-02-01',
+ '12 Main St', 'Athens', 'GA', '30606', NULL);
 
 INSERT INTO `show` (`movie_id`, `showroom_id`, `start_time`) VALUES
 -- 2026-04-16
@@ -621,3 +627,63 @@ INSERT INTO `ticket_price` (`type`, `price`) VALUES
 ('Adult', 12.99),
 ('Senior', 9.99),
 ('Child', 7.99);
+
+INSERT INTO `booking` (
+  `customer_id`,
+  `card_id`,
+  `show_id`,
+  `booking_time`,
+  `promotion_id`,
+  `fee_id`,
+  `booking_fee_amount`,
+  `promotion_discount_amount`,
+  `total_amount`,
+  `payment_reference`
+) VALUES ( -- RYAN BOOKINGS
+  3,  -- customer_id
+  1,  -- card_id
+  1,  -- show_id
+  '2026-04-16 11:32:21',  -- booking_time (or omit to use DEFAULT CURRENT_TIMESTAMP)
+  NULL,  -- promotion_id (can be NULL)
+  1,  -- fee_id
+  1.00,  -- booking_fee_amount
+  0.00,  -- promotion_discount_amount
+  28.48,  -- total_amount
+  'ABCDEFG1234567'   -- payment_reference
+),
+( -- VIK BOOKINGS  
+  4,  -- customer_id
+  4,  -- card_id
+  3,  -- show_id
+  '2026-04-16 11:32:21',  -- booking_time (or omit to use DEFAULT CURRENT_TIMESTAMP)
+  NULL,  -- promotion_id (can be NULL)
+  1,  -- fee_id
+  1.00,  -- booking_fee_amount
+  0.00,  -- promotion_discount_amount
+  15.49,  -- total_amount
+  'ABCDEFG1234568'   -- payment_reference
+),
+(
+  4,  -- customer_id
+  4,  -- card_id
+  9,  -- show_id
+  '2026-04-17 9:30:15',  -- booking_time (or omit to use DEFAULT CURRENT_TIMESTAMP)
+  NULL,  -- promotion_id (can be NULL)
+  1,  -- fee_id
+  1.00,  -- booking_fee_amount
+  0.00,  -- promotion_discount_amount
+  15.49,  -- total_amount
+  'ABCDEFG1234569'   -- payment_reference
+),
+(
+  4,  -- customer_id
+  4,  -- card_id
+  12,  -- show_id
+  '2026-04-19 14:12:21',  -- booking_time (or omit to use DEFAULT CURRENT_TIMESTAMP)
+  NULL,  -- promotion_id (can be NULL)
+  1,  -- fee_id
+  1.00,  -- booking_fee_amount
+  0.00,  -- promotion_discount_amount
+  15.49,  -- total_amount
+  'ABCDEFG1234560'   -- payment_reference
+);

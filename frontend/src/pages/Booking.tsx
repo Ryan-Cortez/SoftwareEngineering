@@ -12,9 +12,11 @@ type Seat = {
 };
 
 type BookingPageProps = {
+  showId?: number;
   movieId?: number;
   movieTitle?: string;
   showtime?: string;
+  showDate?: string;
   poster?: string;
 };
 
@@ -28,9 +30,11 @@ export default function BookingPage() {
   const location = useLocation();
   const state = (location.state as BookingPageProps | null) ?? {};
 
+  const showId = state.showId ?? null;
   const movieId = state.movieId ?? null
   const movieTitle = state.movieTitle ?? "CaptainAmerica: Brave New World";
   const showtime = state.showtime ?? "7:30 PM";
+  const showDate = state.showDate ?? "";
   const poster = state.poster ?? "https://via.placeholder.com/300x450?text=No+Image"; 
 
   const [adultQty, setAdultQty] = useState<number>(1);
@@ -54,9 +58,11 @@ export default function BookingPage() {
   }
   navigate("/seat-selection", {
     state: {
+      showId,
       movieId,
       movieTitle,
       showtime,
+      showDate,
       poster,
       adultQty,
       childQty,
@@ -99,10 +105,9 @@ export default function BookingPage() {
             <div className="movie-summary-info">
               <p className="page-tag">Booking</p>
               <h1>{movieTitle}</h1>
-              <p className="showtime-pill">{showtime}</p>
+              <p className="showtime-pill">{showDate} • {showtime}</p>
               <p className="helper-text">
-                Choose your tickets and seats. This is a front-end prototype for the
-                booking flow.
+                Choose your tickets and seats.
               </p>
             </div>
           </div>
@@ -151,7 +156,7 @@ export default function BookingPage() {
 
             <p className="seat-limit-note">
               Select up to <strong>{totalTickets}</strong> seat
-              {totalTickets === 1 ? "" : "s"} on the next pag.
+              {totalTickets === 1 ? "" : "s"} on the next page.
             </p>
 
             {error && (
@@ -174,7 +179,7 @@ export default function BookingPage() {
 
             <div className="summary-line">
               <span>Showtime</span>
-              <span>{showtime}</span>
+              <span>{showDate} • {showtime}</span>
             </div>
 
             <div className="summary-line">

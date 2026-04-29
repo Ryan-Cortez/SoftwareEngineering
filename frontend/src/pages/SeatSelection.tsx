@@ -12,9 +12,11 @@ type Seat = {
 };
 
 type SeatSelectionState = {
+    showId?: number | null;
     movieId?: number | null;
     movieTitle?: string;
     showtime?: string;
+    showDate?: string;
     poster?: string;
     adultQty?: number;
     childQty?: number;
@@ -54,8 +56,10 @@ export default function SeatSelection() {
     const location = useLocation();
     const state = (location.state as SeatSelectionState | null) ?? {};
 
+    const showId = state.showId ?? null;
     const movieId = state.movieId ?? null;
     const movieTitle = state.movieTitle ?? "Movie";
+    const showDate = state.showDate ?? "";
     const showtime = state.showtime ?? "Showtime";
     const poster =
         state.poster ?? "https://via.placeholder.com/300x450?text=Movie+Poster";
@@ -107,8 +111,10 @@ export default function SeatSelection() {
 
         navigate("/checkout", {
             state: {
+                showId,
                 movieId,
                 movieTitle,
+                showDate,
                 showtime,
                 poster,
                 adultQty,
@@ -130,7 +136,7 @@ export default function SeatSelection() {
                         <div className="movie-summary-info">
                             <p className="page-tag">Seat Selection</p>
                             <h1>{movieTitle}</h1>
-                            <p className="showtime-pill">{showtime}</p>
+                            <p className="showtime-pill">{showDate ? `${showDate} • ${showtime}` : showtime}</p>
                             <p className="helper-text">
                                 Select exactly {totalTickets} seat
                                 {totalTickets === 1 ? "" : "s"}.
@@ -219,6 +225,12 @@ export default function SeatSelection() {
                             <span>Movie</span>
                             <span>{movieTitle}</span>
                         </div>
+
+                        <div className="summary-line">
+                            <span>Date</span>
+                            <span>{showDate || "Not specified"}</span>
+                        </div>
+
 
                         <div className="summary-line">
                             <span>Showtime</span>

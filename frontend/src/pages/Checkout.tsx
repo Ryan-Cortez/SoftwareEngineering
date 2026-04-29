@@ -3,8 +3,10 @@ import { redirect, useLocation, useNavigate } from "react-router-dom";
 
 
 type CheckoutState = {
+    showId?: number | null;
     movieId?: number | null;
     movieTitle?: string;
+    showDate?: string;
     showtime?: string;
     poster?: string;
     adultQty?: number;
@@ -44,10 +46,13 @@ export default function Checkout() {
     const location = useLocation();
     const state = (location.state as CheckoutState | null) ?? {};
 
+    const showId = state.showId ?? null;
     const movieId = state.movieId ?? null;
     const movieTitle = state.movieTitle ?? "Movie Title";
+    const showDate = state.showDate ?? "";
     const showtime = state.showtime ?? "Showtime";
     const poster = state.poster ?? "https://via.placeholder.com/300x450?text=No+Image";
+
     const adultQty = state.adultQty ?? 0;
     const childQty = state.childQty ?? 0;
     const seniorQty = state.seniorQty ?? 0;
@@ -68,6 +73,7 @@ export default function Checkout() {
 
     const totalTickets = adultQty + childQty + seniorQty;
 
+
     function proceedToPayment() {
         setError("");
 
@@ -86,8 +92,10 @@ export default function Checkout() {
                 state: {
                     redirectTo: "/checkout",
                     bookingData: {
+                        showId,
                         movieId,
                         movieTitle,
+                        showDate,
                         showtime,
                         poster,
                         adultQty,
@@ -104,9 +112,11 @@ export default function Checkout() {
 
         navigate("/payment", {
             state: {
+                showId,
                 movieId,
                 movieTitle,
                 showtime,
+                showDate,
                 poster,
                 adultQty,
                 childQty,
@@ -133,6 +143,7 @@ export default function Checkout() {
                             <img src={poster} alt={movieTitle} style={{ width: "150px", borderRadius: "8px" }} />
                             <div style={{ flex: 1, minWidth: "260px" }}>
                                 <h2 style={{ marginTop: 0 }}>{movieTitle}</h2>
+                                <p><strong>Date:</strong> {showDate || "Not specified"}</p>
                                 <p><strong>Showtime:</strong> {showtime}</p>
                                 <p><strong>Seats:</strong> {" "}{selectedSeats.length ? selectedSeats.join(", ") : "None selected"}</p>
                                 <p><strong>Adult Tickets:</strong> {adultQty}</p>

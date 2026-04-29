@@ -93,7 +93,13 @@ export default function MovieDetails() {
     if (error) return <div> {error} </div>;
     if (!movie) return <div>Loading...</div>;
 
-    const showtimes = movie.showtimes?.length ? movie.showtimes : ["2:00 PM", "5:00 PM", "8:00 PM"];
+    const showtimesByDate = movie.showtimes.reduce((groups, showtime) => {
+        if (!groups[showtime.date]) {
+            groups[showtime.date] = [];
+        }
+        groups[showtime.date].push(showtime);
+        return groups;
+    }, {} as Record<string, typeof movie.showtimes>);
 
     return (
         <main className="page">
@@ -155,6 +161,12 @@ export default function MovieDetails() {
                             </p>
                         )}
 
+                        {movie.runtime && (
+                            <p className="movie-details__runtime">
+                                <strong>Runtime:</strong> {movie.runtime} minutes
+                            </p>
+                        )}
+
                         <h3 className="movie-details__section-title">Trailer</h3>
                         <div className="movie-details__trailer">
                             {trailerEmbedUrl ? (
@@ -172,25 +184,42 @@ export default function MovieDetails() {
 
                         <h3 className="movie-details__section-title">Showtimes</h3>
                         <div className="movie-details__showtimes">
-                            {showtimes.map(
-                                (t) => (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        className="booking_prototype_btn"
-                                        onClick={() => navigate("/booking", {
-                                            state: { 
-                                                movieId: movie.id, 
-                                                movieTitle: movie.title,
-                                                showtime: t,
-                                                poster: movie.posterUrl,
-                                            },
-                                        })
-                                    }
-                                >
-                                    {t}
-                                </button>
-                            ))}
+                            
+                            {Object.keys(showtimesByDate).length === 0 ? (
+                                <p>No showtimes available.</p>
+                            ) : (
+                                <div className="movie-details__showtimes-by-date">
+                                    {Object.entries(showtimesByDate).map(([date, times]) => (
+                                        <div key={date} className="movie-details__showtime-date-group">
+                                            <h4>{date}</h4>
+
+                                            <div className="movie-details__showtimes">
+                                                {times.map((showtime) => (
+                                                    <button
+                                                        key={showtime.raw}
+                                                        type="button"
+                                                        className="booking_prototype_btn"
+                                                        onClick={() =>
+                                                            navigate("/booking", {
+                                                                state: {
+                                                                    showId: showtime.id,
+                                                                    movieId: movie.id,
+                                                                    movieTitle: movie.title,
+                                                                    showtime: showtime.time,
+                                                                    showDate: showtime.date,
+                                                                    poster: movie.posterUrl,
+                                                                },
+                                                            })
+                                                        }
+                                                    >
+                                                        {showtime.time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

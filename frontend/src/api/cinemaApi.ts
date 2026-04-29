@@ -16,10 +16,18 @@ export type Movie = {
 }
 
 export type MovieDetails = Movie & {
-    showtimes: string[]; // time of day (hardcoded)
+    showtimes: Showtime[]
     directors?: string[];
     actors?: string[];
 }
+
+export type Showtime = {
+  id: number;
+  date: string; // e.g. "Friday, September 15"
+  time: string; // e.g. "7:30 PM"
+  raw: string; // original datetime string from API
+};
+
 
 export function normalizeMovie (raw: any): Movie {
   return {
@@ -56,7 +64,6 @@ export function normalizeMovie (raw: any): Movie {
 }
 
 
-
 export async function getMovies( search: string = "", genre: string = "", showDate: string = ""): Promise<Movie[]> {
     const params = new URLSearchParams({
       search,
@@ -75,18 +82,19 @@ export async function getMovieById(id: number | string): Promise<MovieDetails> {
     const raw = await res.json();
     const base = normalizeMovie(raw);
 
-    const showtimes =
-      raw.showtimes ??
+    const showtimes: Showtime[] = 
       (Array.isArray(raw.shows)
         ? raw.shows.map((s: any) => {
             const t = s.start_time ?? s.show_time;
-            if (!t) return "";
-            try {
-              const d = new Date(t);
-              return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-            } catch {
-              return String(t);
-            }
+            if (!t) return null;
+
+            const d = new Date(t);
+            return {
+              id: Number(s.id ?? s.show_id ?? t), // fallback to timestamp if no ID
+              date: d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
+              time: d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+              raw: t,
+            };  
           }).filter(Boolean)
         : ["2:00 PM", "5:00 PM", "8:00 PM"]);
 
@@ -113,6 +121,35 @@ export async function getMovieById(id: number | string): Promise<MovieDetails> {
 
     return {...base, showtimes, directors, actors };
 
-    // this is not yet used because the booking page doe not use an id (just a prototype)
+}
+
+export type CreateBookingPayload = {
+  showId: number;
+  cardId: number;
+  selectedSeats: string[];
+  ticketCounts: {
+    adult: number;
+    child: number;
+    senior: number;
+  };
+};
+
+export async function createBooking(payload: CreateBookingPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/bookings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || "Failed to create booking");
+  }
+
+  return data;
 }
     

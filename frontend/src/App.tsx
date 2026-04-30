@@ -23,6 +23,8 @@ import ManageShowtimes from "./pages/ManageShowtimes";
 import AddShowtime from "./pages/AddShowtime";
 import ManagePromotions from "./pages/ManagePromotions";
 import ManageUsers from "./pages/ManageUsers";
+import AddPromotion from "./pages/AddPromotion";
+
 
 export default function App() {
     return (
@@ -52,6 +54,7 @@ export default function App() {
                 <Route path="/admin/showtimes/add" element={<AddShowtime />} />
                 <Route path="/admin/promotions" element={<ManagePromotions />} />
                 <Route path="/admin/users" element={<ManageUsers />} />
+                <Route path="/admin/promotions/add" element={<AddPromotion />} />
             </Routes>
         </>
     );

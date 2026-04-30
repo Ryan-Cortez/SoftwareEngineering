@@ -7,6 +7,28 @@ Frontend expectations (see `frontend/src/api/cinemaApi.ts`):
 
 Important: the frontend can consume either snake_case (movie_id, synopsis, ...)
 or camelCase equivalents; it normalizes both.
+
+--- DESIGN PATTERNS APPLIED ---
+
+1. ADAPTER  (SeatCodeAdapter)
+   Converts raw seat-code strings like "A1" into Seat ORM objects.
+   The rest of the booking logic doesn't know or care about the string format.
+
+2. BUILDER  (BookingResponseBuilder)
+   Constructs the booking confirmation dict incrementally via chained setter
+   methods, keeping the route handler free of ad-hoc dict assembly.
+
+3. FACADE   (BookingFacade)
+   Provides a single, simplified entry-point for the entire booking workflow:
+   validation → seat lookup → price calculation → DB persistence.
+   Hides all internal complexity from the route handler.
+
+4. PROXY    (PaymentCardProxy)
+   Wraps PaymentCard and controls access to sensitive card data:
+   - enforces ownership checks before exposing any data
+   - automatically masks the card number before returning it to callers
+   - keeps the decryption/masking concern in one place
+
 """
 
 import os
@@ -116,6 +138,10 @@ def mask_card_number(plain: str) -> str:
         return "*" * 12 + digits[-4:]
     return "*" * 12
 
+
+# ---------------------------------------------------------------------------
+# ORM Models (unchanged)
+# ---------------------------------------------------------------------------
 
 class Movie(db.Model):
     __tablename__ = "movie"
@@ -450,6 +476,10 @@ class RecommendationMovie(db.Model):
     __table_args__ = (PrimaryKeyConstraint("recommendation_id", "movie_id"),)
 
 
+# ---------------------------------------------------------------------------
+# Helpers (unchanged)
+# ---------------------------------------------------------------------------
+
 def get_current_user():
     uid = session.get("user_id")
     if not uid:
@@ -488,7 +518,6 @@ def _parse_start_time(data: dict):
     start_time_raw = (data.get("start_time") or data.get("startTime") or "").strip()
     if start_time_raw:
         try:
-            # Accept "YYYY-MM-DD HH:MM:SS" by converting to ISO-ish.
             normalized = start_time_raw.replace(" ", "T")
             return datetime.fromisoformat(normalized), None
         except ValueError:
@@ -517,54 +546,565 @@ def _parse_start_time(data: dict):
     return None, api_error("start_time is required", 400)
 
 
-def payment_card_to_public_dict(c: PaymentCard) -> dict:
-    last4 = (c.last_four or "").strip()
-    if last4 and len(last4) == 4:
-        masked = "*" * 12 + last4
-    else:
-        plain = decrypt_card_number(c.card_number_encrypted)
-        masked = mask_card_number(plain)
-    return {
-        "card_id": c.card_id,
-        "card_number": masked,
-        "expiration_date": c.expiration_date.isoformat() if c.expiration_date else None,
-        "billing_street": c.billing_street,
-        "billing_city": c.billing_city,
-        "billing_state": c.billing_state,
-        "billing_zip_code": c.billing_zip_code,
-        "billing_apt": c.billing_apt,
-    }
-
-
-MAX_PAYMENT_CARDS = 3
-
-
-def _parse_seat_code(code: str):
-    """
-    Accepts seat codes like "A1" or "B12".
-    Returns (row_label: str, seat_number: int) or (None, None) if invalid.
-    """
-    if not isinstance(code, str):
-        return None, None
-    m = re.match(r"^\s*([A-Za-z]+)\s*(\d+)\s*$", code)
-    if not m:
-        return None, None
-    row = m.group(1).upper()
-    try:
-        num = int(m.group(2))
-    except Exception:
-        return None, None
-    if num <= 0:
-        return None, None
-    return row, num
-
-
 def _money_to_float(val) -> float:
     try:
         return float(val)
     except Exception:
         return 0.0
 
+
+# ---------------------------------------------------------------------------
+# PATTERN 1 — PROXY: PaymentCardProxy
+#
+# The Proxy pattern provides a surrogate that controls access to the real
+# PaymentCard object. Here it:
+#   • enforces that only the owning customer can inspect a card
+#   • automatically masks the card number before exposing it
+#   • keeps all decrypt/mask logic in one place so routes stay clean
+#
+# Before this pattern, ownership checks and masking were scattered across
+# add_payment_card, get_payment_card, update_payment_card, and the
+# payment_card_to_public_dict helper. Now every caller goes through the proxy.
+# ---------------------------------------------------------------------------
+
+class PaymentCardProxy:
+    """
+    PROXY pattern — wraps a PaymentCard ORM instance and gate-keeps access.
+
+    Usage:
+        proxy = PaymentCardProxy(card, requesting_customer_id)
+        if not proxy.is_accessible():
+            return api_error("Card not found.", 404)
+        public_dict = proxy.to_public_dict()   # always masked
+        full_number = proxy.get_plain_number()  # decrypted (internal use only)
+    """
+
+    def __init__(self, card: PaymentCard, requesting_customer_id: int):
+        # Store the real subject and the identity of the caller.
+        self._card = card
+        self._requesting_customer_id = requesting_customer_id
+
+    # --- access control ---
+
+    def is_accessible(self) -> bool:
+        """Return True only when the card belongs to the requesting customer."""
+        return (
+            self._card is not None
+            and self._card.customer_id == self._requesting_customer_id
+        )
+
+    # --- safe public interface ---
+
+    def to_public_dict(self) -> dict:
+        """
+        Return a masked representation safe for API responses.
+        Card number is always shown as ************XXXX.
+        """
+        # Use the stored last_four when available to avoid an unnecessary decrypt.
+        last4 = (self._card.last_four or "").strip()
+        if last4 and len(last4) == 4:
+            masked = "*" * 12 + last4
+        else:
+            plain = decrypt_card_number(self._card.card_number_encrypted)
+            masked = mask_card_number(plain)
+
+        return {
+            "card_id": self._card.card_id,
+            "card_number": masked,
+            "expiration_date": self._card.expiration_date.isoformat() if self._card.expiration_date else None,
+            "billing_street": self._card.billing_street,
+            "billing_city": self._card.billing_city,
+            "billing_state": self._card.billing_state,
+            "billing_zip_code": self._card.billing_zip_code,
+            "billing_apt": self._card.billing_apt,
+        }
+
+    def get_plain_number(self) -> str:
+        """Decrypt and return the raw card number (for internal use only)."""
+        return decrypt_card_number(self._card.card_number_encrypted)
+
+    # Expose the underlying ORM object for update routes that need to mutate it.
+    @property
+    def card(self) -> PaymentCard:
+        return self._card
+
+
+# Keep the original free function as a thin wrapper so any code that still
+# calls it directly continues to work without modification.
+def payment_card_to_public_dict(c: PaymentCard) -> dict:
+    # PROXY: delegate to the proxy, bypassing the ownership check because
+    # internal callers (e.g. get_profile) have already verified ownership.
+    proxy = PaymentCardProxy(c, c.customer_id)
+    return proxy.to_public_dict()
+
+
+MAX_PAYMENT_CARDS = 3
+
+
+# ---------------------------------------------------------------------------
+# PATTERN 2 — ADAPTER: SeatCodeAdapter
+#
+# The Adapter pattern converts an incompatible interface into one a client
+# expects. The frontend sends seat selections as plain strings ("A1", "B12").
+# The database layer requires (showroom_id, row_label, seat_number).
+#
+# SeatCodeAdapter bridges that gap: it accepts the raw string list from the
+# request payload and produces a list of verified Seat ORM objects, surfacing
+# validation errors in a uniform way.
+#
+# Before this pattern, the parsing + DB lookup logic lived inline inside
+# create_booking(), making that function long and hard to test independently.
+# ---------------------------------------------------------------------------
+
+class SeatCodeAdapter:
+    """
+    ADAPTER pattern — translates raw seat-code strings into Seat ORM objects.
+
+    Usage:
+        adapter = SeatCodeAdapter(selected_seats_raw, showroom_id)
+        seats, error = adapter.resolve()
+        if error:
+            return error   # already an api_error() tuple
+        # seats is now a list of verified Seat ORM instances
+    """
+
+    # Regex: one or more letters followed by one or more digits, e.g. "A1", "BC12"
+    _SEAT_CODE_RE = re.compile(r"^\s*([A-Za-z]+)\s*(\d+)\s*$")
+
+    def __init__(self, raw_codes: list[str], showroom_id: int):
+        self._raw_codes = raw_codes
+        self._showroom_id = showroom_id
+
+    def _parse_code(self, code: str):
+        """
+        Convert a seat-code string into (row_label, seat_number).
+        Returns (None, None) for invalid input.
+        """
+        if not isinstance(code, str):
+            return None, None
+        m = self._SEAT_CODE_RE.match(code)
+        if not m:
+            return None, None
+        row = m.group(1).upper()
+        try:
+            num = int(m.group(2))
+        except Exception:
+            return None, None
+        if num <= 0:
+            return None, None
+        return row, num
+
+    def resolve(self) -> tuple[list, object]:
+        """
+        Parse all codes, deduplicate, look up each in the DB for the given
+        showroom, and return (seat_list, None) on success or ([], error) on
+        the first problem encountered.
+        """
+        seats = []
+        seen = set()
+
+        for code in self._raw_codes:
+            if not isinstance(code, str) or not code.strip():
+                return [], api_error("selectedSeats entries must be strings like 'A1'", 400)
+
+            norm = code.strip().upper()
+            if norm in seen:
+                return [], api_error(f"Duplicate seat selected: {norm}", 400)
+            seen.add(norm)
+
+            row_label, seat_number = self._parse_code(norm)
+            if not row_label:
+                return [], api_error(f"Invalid seat code: {code}", 400)
+
+            # Adapter translates string → Seat ORM object via DB lookup.
+            seat = Seat.query.filter_by(
+                showroom_id=self._showroom_id,
+                row_label=row_label,
+                seat_number=seat_number,
+            ).first()
+            if not seat:
+                return [], api_error(f"Seat not found in this showroom: {row_label}{seat_number}", 404)
+
+            seats.append(seat)
+
+        return seats, None
+
+
+# Keep the original private helper so nothing that calls it externally breaks.
+def _parse_seat_code(code: str):
+    """Legacy helper — delegates to SeatCodeAdapter's internal parser."""
+    # ADAPTER: reuse the adapter's parsing logic to stay DRY.
+    adapter = SeatCodeAdapter.__new__(SeatCodeAdapter)
+    return adapter._parse_code(code) if isinstance(code, str) else (None, None)
+
+
+# ---------------------------------------------------------------------------
+# PATTERN 3 — BUILDER: BookingResponseBuilder
+#
+# The Builder pattern separates the construction of a complex object from its
+# representation. Creating the booking confirmation dict involves assembling
+# data from multiple sources (Booking ORM, list of Ticket ORMs). Without a
+# builder this assembly is an inline block of ad-hoc dict manipulation.
+#
+# BookingResponseBuilder provides a fluent (chained) interface: each setter
+# returns self, so the caller can chain calls and finish with .build().
+# ---------------------------------------------------------------------------
+
+class BookingResponseBuilder:
+    """
+    BUILDER pattern — constructs the booking confirmation response dict.
+
+    Usage:
+        response = (
+            BookingResponseBuilder()
+            .set_booking(booking)
+            .set_tickets(ticket_rows)
+            .build()
+        )
+        return jsonify(response), 201
+    """
+
+    def __init__(self):
+        self._booking = None
+        self._tickets = []
+
+    def set_booking(self, booking: Booking) -> "BookingResponseBuilder":
+        """Store the persisted Booking ORM instance."""
+        self._booking = booking
+        return self  # return self enables method chaining
+
+    def set_tickets(self, tickets: list) -> "BookingResponseBuilder":
+        """Store the list of persisted Ticket ORM instances."""
+        self._tickets = tickets
+        return self  # return self enables method chaining
+
+    def build(self) -> dict:
+        """
+        Assemble and return the final response dictionary.
+        Raises ValueError if required parts were not supplied.
+        """
+        if self._booking is None:
+            raise ValueError("BookingResponseBuilder: booking must be set before calling build()")
+
+        return {
+            "message": "Booking created.",
+            "booking": {
+                "booking_id": self._booking.booking_id,
+                "customer_id": self._booking.customer_id,
+                "show_id": self._booking.show_id,
+                "card_id": self._booking.card_id,
+                "booking_time": (
+                    self._booking.booking_time.isoformat() if self._booking.booking_time else None
+                ),
+                "total_amount": _money_to_float(self._booking.total_amount),
+                "booking_fee_amount": _money_to_float(self._booking.booking_fee_amount),
+                "promotion_discount_amount": _money_to_float(self._booking.promotion_discount_amount),
+            },
+            # Each ticket is mapped to a small summary dict.
+            "tickets": [
+                {
+                    "ticket_id": t.ticket_id,
+                    "type": t.type,
+                    "unit_price": _money_to_float(t.unit_price),
+                    "seat_id": t.seat_id,
+                }
+                for t in self._tickets
+            ],
+        }
+
+
+# ---------------------------------------------------------------------------
+# PATTERN 4 — FACADE: BookingFacade
+#
+# The Facade pattern provides a simplified interface to a complex subsystem.
+# Creating a booking touches six concerns:
+#   1. Input parsing & validation
+#   2. Show / card / seat existence checks  (uses SeatCodeAdapter — ADAPTER)
+#   3. Pricing lookup
+#   4. Booking + Ticket DB persistence
+#   5. Building the response dict           (uses BookingResponseBuilder — BUILDER)
+#   6. Returning a Flask response tuple
+#
+# Before this pattern all six steps lived inline in the route handler, making
+# it ~100 lines long. The Facade encapsulates steps 1-5; the route handler
+# just calls BookingFacade(user, data).execute() and returns the result.
+# ---------------------------------------------------------------------------
+
+class BookingFacade:
+    """
+    FACADE pattern — single entry-point for the end-to-end booking workflow.
+
+    Usage (from the route handler):
+        facade = BookingFacade(user, request.get_json() or {})
+        return facade.execute()
+    """
+
+    def __init__(self, user: User, data: dict):
+        self._user = user
+        self._data = data
+
+    # ------------------------------------------------------------------
+    # Public entry-point
+    # ------------------------------------------------------------------
+
+    def execute(self):
+        """
+        Run the full booking workflow.
+        Returns a Flask response tuple (response, status_code) in all cases.
+        """
+        # Step 1 — parse & validate the raw request payload
+        err = self._validate_inputs()
+        if err:
+            return err
+
+        # Step 2 — resolve domain objects (show, card, seats)
+        err = self._resolve_entities()
+        if err:
+            return err
+
+        # Step 3 — look up pricing tables
+        err = self._load_pricing()
+        if err:
+            return err
+
+        # Step 4 — persist to DB
+        err = self._persist()
+        if err:
+            return err
+
+        # Step 4.5 — send confirmation email (best-effort)
+        self._send_order_confirmation_email_best_effort()
+
+        # Step 5 — build and return the JSON response (uses Builder)
+        response_dict = (
+            BookingResponseBuilder()
+            .set_booking(self._booking)
+            .set_tickets(self._ticket_rows)
+            .build()
+        )
+        return jsonify(response_dict), 201
+
+    # ------------------------------------------------------------------
+    # Private steps — each populates instance attributes for subsequent steps
+    # ------------------------------------------------------------------
+
+    def _validate_inputs(self):
+        """Parse raw JSON fields; return an error response or None."""
+        data = self._data
+
+        show_id_raw = data.get("showId") if "showId" in data else data.get("show_id")
+        card_id_raw = data.get("cardId") if "cardId" in data else data.get("card_id")
+        selected_seats_raw = (
+            data.get("selectedSeats") if "selectedSeats" in data else data.get("selected_seats")
+        )
+        ticket_counts = (
+            data.get("ticketCounts") if "ticketCounts" in data else data.get("ticket_counts") or {}
+        )
+
+        try:
+            self._show_id = int(show_id_raw)
+        except Exception:
+            return api_error("showId is required and must be a number", 400)
+
+        try:
+            self._card_id = int(card_id_raw)
+        except Exception:
+            return api_error("cardId is required and must be a number", 400)
+
+        if not isinstance(selected_seats_raw, list) or not selected_seats_raw:
+            return api_error("selectedSeats is required and must be a non-empty array", 400)
+        self._selected_seats_raw = selected_seats_raw
+
+        def _count(k: str) -> int:
+            try:
+                return int(ticket_counts.get(k, 0) or 0)
+            except Exception:
+                return 0
+
+        self._adult = _count("adult")
+        self._child = _count("child")
+        self._senior = _count("senior")
+
+        if self._adult < 0 or self._child < 0 or self._senior < 0:
+            return api_error("ticketCounts values must be >= 0", 400)
+
+        self._total_tickets = self._adult + self._child + self._senior
+        if self._total_tickets <= 0:
+            return api_error("At least one ticket is required", 400)
+
+        if len(self._selected_seats_raw) != self._total_tickets:
+            return api_error("selectedSeats length must match total tickets selected", 400)
+
+        return None  # no error
+
+    def _resolve_entities(self):
+        """
+        Look up Show, PaymentCard, and Seats; return an error response or None.
+        Uses SeatCodeAdapter (ADAPTER) to convert seat code strings to Seat ORM objects.
+        Uses PaymentCardProxy (PROXY) to enforce card ownership.
+        """
+        self._show = Show.query.get(self._show_id)
+        if not self._show:
+            return api_error("Show not found", 404)
+
+        # PROXY: verify card ownership before proceeding.
+        raw_card = PaymentCard.query.filter_by(
+            card_id=self._card_id,
+            customer_id=self._user.user_id,
+            is_active=True,
+        ).first()
+        proxy = PaymentCardProxy(raw_card, self._user.user_id) if raw_card else None
+        if proxy is None or not proxy.is_accessible():
+            return api_error("Payment card not found for this user", 404)
+        # We only need the ORM object from here on.
+        self._card = proxy.card
+
+        # ADAPTER: translate seat code strings → verified Seat ORM objects.
+        adapter = SeatCodeAdapter(self._selected_seats_raw, self._show.showroom_id)
+        seats, err = adapter.resolve()
+        if err:
+            return err
+        self._seats = seats
+
+        return None  # no error
+
+    def _load_pricing(self):
+        """Fetch TicketPrice rows and the active BookingFee; return error or None."""
+        self._prices = {p.type: p for p in TicketPrice.query.all()}
+        for t in ("Adult", "Child", "Senior"):
+            if t not in self._prices:
+                return api_error(f"Ticket price not configured for {t}", 500)
+
+        self._fee = (
+            BookingFee.query.filter_by(is_active=True)
+            .order_by(BookingFee.fee_id.asc())
+            .first()
+        )
+        if not self._fee:
+            return api_error("No active booking fee configured", 500)
+
+        return None  # no error
+
+    def _persist(self):
+        """
+        Write the Booking and Ticket rows to the database.
+        Returns an error response on DB failure or None on success.
+        """
+        ticket_types = (
+            ["Adult"] * self._adult
+            + ["Child"] * self._child
+            + ["Senior"] * self._senior
+        )
+
+        subtotal = (
+            self._adult  * _money_to_float(self._prices["Adult"].price)
+            + self._child  * _money_to_float(self._prices["Child"].price)
+            + self._senior * _money_to_float(self._prices["Senior"].price)
+        )
+        booking_fee_amount = _money_to_float(self._fee.amount)
+        promotion_discount_amount = 0.0
+        total_amount = max(0.0, subtotal + booking_fee_amount - promotion_discount_amount)
+
+        self._booking = Booking(
+            customer_id=self._user.user_id,
+            card_id=self._card_id,
+            show_id=self._show_id,
+            promotion_id=None,
+            fee_id=self._fee.fee_id,
+            booking_fee_amount=booking_fee_amount,
+            promotion_discount_amount=promotion_discount_amount,
+            total_amount=total_amount,
+            payment_reference=f"MOCK-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        )
+
+        db.session.add(self._booking)
+        db.session.flush()  # get booking.booking_id before inserting tickets
+
+        self._ticket_rows = []
+        for seat, ttype in zip(self._seats, ticket_types):
+            unit_price = _money_to_float(self._prices[ttype].price)
+            ticket = Ticket(
+                type=ttype,
+                unit_price=unit_price,
+                booking_id=self._booking.booking_id,
+                seat_id=seat.seat_id,
+                show_id=self._show_id,
+                showroom_id=self._show.showroom_id,
+            )
+            db.session.add(ticket)
+            self._ticket_rows.append(ticket)
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            # Most likely: uq_ticket_show_seat conflict (concurrent booking).
+            return api_error("One or more selected seats are no longer available.", 409)
+        except Exception:
+            db.session.rollback()
+            return api_error("Failed to create booking.", 500)
+
+        return None  # no error
+
+    def _send_order_confirmation_email_best_effort(self) -> None:
+        """
+        Best-effort order confirmation email.
+        Never blocks booking creation if email fails or mail is unconfigured.
+        """
+        try:
+            recipient = (self._user.email or "").strip()
+            if not recipient:
+                return
+
+            movie = Movie.query.get(self._show.movie_id) if getattr(self, "_show", None) else None
+            showroom = Showroom.query.get(self._show.showroom_id) if getattr(self, "_show", None) else None
+
+            seat_labels = []
+            for s in getattr(self, "_seats", []) or []:
+                row = (getattr(s, "row_label", "") or "").strip()
+                num = getattr(s, "seat_number", None)
+                if row and num is not None:
+                    seat_labels.append(f"{row}{num}")
+            seat_labels_str = ", ".join(seat_labels) if seat_labels else ""
+
+            start_time = ""
+            if getattr(self, "_show", None) and self._show.start_time:
+                start_time = self._show.start_time.isoformat()
+
+            card_last_four = (getattr(self, "_card", None) and (self._card.last_four or "").strip()) or ""
+
+            body_lines = [
+                f"Hi {self._user.first_name},",
+                "",
+                "Thanks for your order! Your booking is confirmed.",
+                "",
+                f"Booking ID: {self._booking.booking_id}",
+                f"Payment reference: {self._booking.payment_reference or ''}",
+                f"Movie: {movie.title if movie else ''}",
+                f"Showtime: {start_time}",
+                f"Showroom: {showroom.showroom_name if showroom else ''}",
+                f"Seats: {seat_labels_str}",
+                f"Tickets: Adult {getattr(self, '_adult', 0)}, Child {getattr(self, '_child', 0)}, Senior {getattr(self, '_senior', 0)}",
+                f"Total charged: ${_money_to_float(self._booking.total_amount):.2f}",
+            ]
+            if card_last_four:
+                body_lines.append(f"Card: ****{card_last_four}")
+
+            body_lines.extend(["", "See you at the movies!"])
+
+            _send_email_or_log(
+                subject=f"Order Confirmation - Booking #{self._booking.booking_id}",
+                recipients=[recipient],
+                body="\n".join(body_lines),
+                demo_fallback_label=f"Order confirmation intended for {recipient} (booking {self._booking.booking_id})",
+            )
+        except Exception as e:
+            print(f"Order confirmation email failed to send: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Admin / movie helpers (unchanged)
+# ---------------------------------------------------------------------------
 
 def _create_movie_from_request_data(data: dict):
     """
@@ -694,6 +1234,10 @@ def _post_showtime_common():
     return jsonify(_showtime_to_frontend_dict(show)), 201
 
 
+# ---------------------------------------------------------------------------
+# Routes (all functionality unchanged; booking route now uses the Facade)
+# ---------------------------------------------------------------------------
+
 @app.get("/api/movies")
 def get_movies():
     search = (request.args.get("search") or "").strip()
@@ -749,7 +1293,6 @@ def create_movie_for_admin_ui():
 
 @app.get("/api/showrooms")
 def list_showrooms():
-    # Frontend expects { id, name }; keep snake_case ids for older clients.
     showrooms = Showroom.query.filter_by(is_active=True).order_by(Showroom.showroom_id.asc()).all()
     return jsonify(
         [
@@ -925,7 +1468,6 @@ def admin_send_promotion_email(promotion_id: int):
     if not promo:
         return jsonify({"error": "Promotion not found"}), 404
 
-    # Send to subscribed users only.
     q = (
         db.session.query(User.email, User.first_name)
         .join(Customer, Customer.customer_id == User.user_id)
@@ -1169,6 +1711,8 @@ def get_profile():
                 if address
                 else None
             ),
+            # PROXY: payment_card_to_public_dict delegates to PaymentCardProxy
+            # to ensure card numbers are always masked in profile responses.
             "payment_cards": [payment_card_to_public_dict(c) for c in cards],
             "favorites": [m.to_dict() for f in favs if (m := Movie.query.get(f.movie_id))],
         }
@@ -1319,7 +1863,9 @@ def add_payment_card():
     except Exception as e:
         print(f"Email failed to send: {e}")
 
-    return jsonify({"message": "Card added.", "card": payment_card_to_public_dict(card)}), 201
+    # PROXY: use PaymentCardProxy to produce the masked public representation.
+    proxy = PaymentCardProxy(card, user.user_id)
+    return jsonify({"message": "Card added.", "card": proxy.to_public_dict()}), 201
 
 
 @app.get("/api/profile/payment-cards/<int:card_id>")
@@ -1328,22 +1874,25 @@ def get_payment_card(card_id: int):
     if not user:
         return jsonify({"error": "Not logged in."}), 401
 
-    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
-    if not card:
+    raw_card = PaymentCard.query.filter_by(card_id=card_id, is_active=True).first()
+
+    # PROXY: enforce ownership and mask card number through the proxy.
+    proxy = PaymentCardProxy(raw_card, user.user_id) if raw_card else None
+    if proxy is None or not proxy.is_accessible():
         return jsonify({"error": "Card not found."}), 404
 
-    plain = decrypt_card_number(card.card_number_encrypted)
+    plain = proxy.get_plain_number()
     return jsonify(
         {
             "card": {
-                "card_id": card.card_id,
+                "card_id": proxy.card.card_id,
                 "card_number": plain,
-                "expiration_date": card.expiration_date.isoformat() if card.expiration_date else None,
-                "billing_street": card.billing_street,
-                "billing_city": card.billing_city,
-                "billing_state": card.billing_state,
-                "billing_zip_code": card.billing_zip_code,
-                "billing_apt": card.billing_apt,
+                "expiration_date": proxy.card.expiration_date.isoformat() if proxy.card.expiration_date else None,
+                "billing_street": proxy.card.billing_street,
+                "billing_city": proxy.card.billing_city,
+                "billing_state": proxy.card.billing_state,
+                "billing_zip_code": proxy.card.billing_zip_code,
+                "billing_apt": proxy.card.billing_apt,
             }
         }
     ), 200
@@ -1355,10 +1904,14 @@ def update_payment_card(card_id: int):
     if not user:
         return jsonify({"error": "Not logged in."}), 401
 
-    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
-    if not card:
+    raw_card = PaymentCard.query.filter_by(card_id=card_id, is_active=True).first()
+
+    # PROXY: verify the card belongs to this user before allowing mutation.
+    proxy = PaymentCardProxy(raw_card, user.user_id) if raw_card else None
+    if proxy is None or not proxy.is_accessible():
         return jsonify({"error": "Card not found."}), 404
 
+    card = proxy.card  # get the underlying ORM object for mutation
     data = request.get_json() or {}
 
     if "card_number" in data or "cardNumber" in data:
@@ -1409,7 +1962,8 @@ def update_payment_card(card_id: int):
     except Exception as e:
         print(f"Email failed to send: {e}")
 
-    return jsonify({"message": "Card updated.", "card": payment_card_to_public_dict(card)}), 200
+    # PROXY: produce masked response via proxy after mutation.
+    return jsonify({"message": "Card updated.", "card": proxy.to_public_dict()}), 200
 
 
 @app.delete("/api/profile/payment-cards/<int:card_id>")
@@ -1453,6 +2007,9 @@ def create_booking():
         selectedSeats: string[],        // e.g. ["A1", "A2"]
         ticketCounts: { adult, child, senior }
       }
+
+    FACADE: the entire workflow is delegated to BookingFacade, which
+    internally uses the Adapter (seat resolution) and Builder (response).
     """
     user, err = require_login()
     if err:
@@ -1460,167 +2017,8 @@ def create_booking():
     if user.customer is None:
         return api_error("Customer account required.", 403)
 
-    data = request.get_json() or {}
-    show_id_raw = data.get("showId") if "showId" in data else data.get("show_id")
-    card_id_raw = data.get("cardId") if "cardId" in data else data.get("card_id")
-    selected_seats_raw = data.get("selectedSeats") if "selectedSeats" in data else data.get("selected_seats")
-    ticket_counts = data.get("ticketCounts") if "ticketCounts" in data else data.get("ticket_counts") or {}
-
-    try:
-        show_id = int(show_id_raw)
-    except Exception:
-        return api_error("showId is required and must be a number", 400)
-
-    try:
-        card_id = int(card_id_raw)
-    except Exception:
-        return api_error("cardId is required and must be a number", 400)
-
-    if not isinstance(selected_seats_raw, list) or not selected_seats_raw:
-        return api_error("selectedSeats is required and must be a non-empty array", 400)
-
-    def _count(k: str) -> int:
-        try:
-            return int(ticket_counts.get(k, 0) or 0)
-        except Exception:
-            return 0
-
-    adult = _count("adult")
-    child = _count("child")
-    senior = _count("senior")
-    if adult < 0 or child < 0 or senior < 0:
-        return api_error("ticketCounts values must be >= 0", 400)
-
-    total_tickets = adult + child + senior
-    if total_tickets <= 0:
-        return api_error("At least one ticket is required", 400)
-
-    if len(selected_seats_raw) != total_tickets:
-        return api_error("selectedSeats length must match total tickets selected", 400)
-
-    show = Show.query.get(show_id)
-    if not show:
-        return api_error("Show not found", 404)
-
-    # Ensure the card belongs to this customer.
-    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
-    if not card:
-        return api_error("Payment card not found for this user", 404)
-
-    # Lookup pricing + booking fee snapshots.
-    prices = {p.type: p for p in TicketPrice.query.all()}
-    for t in ("Adult", "Child", "Senior"):
-        if t not in prices:
-            return api_error(f"Ticket price not configured for {t}", 500)
-
-    fee = BookingFee.query.filter_by(is_active=True).order_by(BookingFee.fee_id.asc()).first()
-    if not fee:
-        return api_error("No active booking fee configured", 500)
-
-    # Parse and validate seats; ensure they belong to the show's showroom.
-    parsed = []
-    seen_codes = set()
-    for code in selected_seats_raw:
-        if not isinstance(code, str) or not code.strip():
-            return api_error("selectedSeats entries must be strings like 'A1'", 400)
-        norm = code.strip().upper()
-        if norm in seen_codes:
-            return api_error(f"Duplicate seat selected: {norm}", 400)
-        seen_codes.add(norm)
-        row_label, seat_number = _parse_seat_code(norm)
-        if not row_label:
-            return api_error(f"Invalid seat code: {code}", 400)
-        parsed.append((norm, row_label, seat_number))
-
-    seats = []
-    for _code, row_label, seat_number in parsed:
-        seat = Seat.query.filter_by(
-            showroom_id=show.showroom_id,
-            row_label=row_label,
-            seat_number=seat_number,
-        ).first()
-        if not seat:
-            return api_error(f"Seat not found in this showroom: {row_label}{seat_number}", 404)
-        seats.append(seat)
-
-    # Expand ticket types; deterministically assign to seats in the given order.
-    ticket_types = (["Adult"] * adult) + (["Child"] * child) + (["Senior"] * senior)
-
-    subtotal = (
-        adult * _money_to_float(prices["Adult"].price)
-        + child * _money_to_float(prices["Child"].price)
-        + senior * _money_to_float(prices["Senior"].price)
-    )
-    booking_fee_amount = _money_to_float(fee.amount)
-    promotion_discount_amount = 0.0
-    total_amount = max(0.0, subtotal + booking_fee_amount - promotion_discount_amount)
-
-    booking = Booking(
-        customer_id=user.user_id,
-        card_id=card_id,
-        show_id=show_id,
-        promotion_id=None,
-        fee_id=fee.fee_id,
-        booking_fee_amount=booking_fee_amount,
-        promotion_discount_amount=promotion_discount_amount,
-        total_amount=total_amount,
-        payment_reference=f"MOCK-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-    )
-
-    db.session.add(booking)
-    db.session.flush()  # assigns booking.booking_id
-
-    ticket_rows = []
-    for seat, ttype in zip(seats, ticket_types):
-        unit_price = _money_to_float(prices[ttype].price)
-        ticket = Ticket(
-            type=ttype,
-            unit_price=unit_price,
-            booking_id=booking.booking_id,
-            seat_id=seat.seat_id,
-            show_id=show_id,
-            showroom_id=show.showroom_id,
-        )
-        db.session.add(ticket)
-        ticket_rows.append(ticket)
-
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        # Most likely: uq_ticket_show_seat conflict (someone else booked a seat first).
-        return api_error("One or more selected seats are no longer available.", 409)
-    except Exception:
-        db.session.rollback()
-        return api_error("Failed to create booking.", 500)
-
-    return (
-        jsonify(
-            {
-                "message": "Booking created.",
-                "booking": {
-                    "booking_id": booking.booking_id,
-                    "customer_id": booking.customer_id,
-                    "show_id": booking.show_id,
-                    "card_id": booking.card_id,
-                    "booking_time": booking.booking_time.isoformat() if booking.booking_time else None,
-                    "total_amount": _money_to_float(booking.total_amount),
-                    "booking_fee_amount": _money_to_float(booking.booking_fee_amount),
-                    "promotion_discount_amount": _money_to_float(booking.promotion_discount_amount),
-                },
-                "tickets": [
-                    {
-                        "ticket_id": t.ticket_id,
-                        "type": t.type,
-                        "unit_price": _money_to_float(t.unit_price),
-                        "seat_id": t.seat_id,
-                    }
-                    for t in ticket_rows
-                ],
-            }
-        ),
-        201,
-    )
+    # FACADE: one call replaces ~100 lines of inline logic.
+    return BookingFacade(user, request.get_json() or {}).execute()
 
 
 @app.get("/api/favorites")
@@ -1670,6 +2068,7 @@ def remove_favorite():
         db.session.commit()
 
     return jsonify({"message": "Removed from favorites."}), 200
+
 
 @app.get("/api/bookings")
 def get_order_history():

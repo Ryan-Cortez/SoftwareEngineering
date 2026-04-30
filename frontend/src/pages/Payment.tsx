@@ -1,17 +1,22 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useState, useMemo, useEffect } from "react";
-import { getProfile, type UserProfile } from "../api/profileApi";
+import { getProfile } from "../api/profileApi";
+import { createBooking } from "../api/cinemaApi";
 
 type PaymentState = {
+    showId?: number | null;
     movieTitle?: string;
     showtime?: string;
     selectedSeats?: string[];
     email?: string;
     subtotal?: number;
+    adultQty?: number;
+    childQty?: number;
+    seniorQty?: number;
 };
 
 type SavedPaymentMethod = {
-    id: number;
+    card_id: number;
     card_number: string;
     expiration_date: string;
 };
@@ -68,29 +73,20 @@ function formatExpMMYY(isoDate: string): string {
     return "";
 }
 
-function isUserLoggedIn(): boolean {
-    try {
-        return Boolean(
-            localStorage.getItem("token") ||
-            localStorage.getItem("authToken") ||
-            localStorage.getItem("user") ||
-            localStorage.getItem("isLoggedIn") === "true"
-        );
-    } catch {
-        return false;
-    }
-}
-
 export default function Payment() {
     const navigate = useNavigate();
     const location = useLocation();
     const state = (location.state as PaymentState | null) ?? {};
 
+    const showId = state.showId ?? null;
     const movieTitle = state.movieTitle ?? "Movie Title";
     const showtime = state.showtime ?? "Showtime";
     const selectedSeats = state.selectedSeats ?? [];
     const email = state.email ?? "";
     const subtotal = state.subtotal ?? 0;
+    const adultQty = state.adultQty ?? 0;
+    const childQty = state.childQty ?? 0;
+    const seniorQty = state.seniorQty ?? 0;
 
     const taxRate = 0.07;
     const taxAmount = subtotal * taxRate;
@@ -101,6 +97,7 @@ export default function Payment() {
     const [savedCardsError, setSavedCardsError] = useState("");
     const [paymentMode, setPaymentMode] = useState<"saved" | "new">("saved");
     const [selectedSavedCardId, setSelectedSavedCardId] = useState<number | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     const [cardholderName, setCardholderName] = useState("");
     const [cardNumber, setCardNumber] = useState("");
@@ -125,7 +122,7 @@ export default function Payment() {
                     setSavedCards(cards);
                     if (cards.length > 0) {
                         setPaymentMode("saved");
-                        setSelectedSavedCardId(cards[0].id);
+                        setSelectedSavedCardId(cards[0].card_id);
                     } else {
                         setPaymentMode("new");
                     }
@@ -149,7 +146,7 @@ export default function Payment() {
     }, []);
 
     const selecteddSavedCard = useMemo(() => {
-        return savedCards.find((c) => c.id === selectedSavedCardId) ?? null;
+        return savedCards.find((c) => c.card_id === selectedSavedCardId) ?? null;
     }, [savedCards, selectedSavedCardId]);
 
     const cardBrand = useMemo(() => {
@@ -166,21 +163,53 @@ export default function Payment() {
         : cardNumber || "**** **** **** ****";
     
     const previewExpiry =
-        paymentMode === "saved" ? formatExpMMYY(selecteddSavedCard?.expiration_date ?? "")
-        : expiry || "MM/YY";
+        paymentMode === "saved"
+            ? formatExpMMYY(selecteddSavedCard?.expiration_date ?? "") || "MM/YY"
+            : expiry || "MM/YY";
 
-    function handlePayment(e: React.FormEvent<HTMLFormElement>) {
+    async function handlePayment(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setError("");
         setSuccess("");
+
+        if (!showId) {
+            setError("Missing showtime information. Please restart checkout.");
+            return;
+        }
+
+        const totalTickets = adultQty + childQty + seniorQty;
+        if (totalTickets <= 0) {
+            setError("Missing ticket quantity information. Please restart checkout.");
+            return;
+        }
+        if (!selectedSeats.length || selectedSeats.length !== totalTickets) {
+            setError("Seat selection is incomplete. Please restart checkout.");
+            return;
+        }
 
         if (paymentMode === "saved") {
             if (!selecteddSavedCard) {
                 setError("Please select a saved card");
                 return;
             }
-            // In a real implementation, we would send the selected card ID to the backend to process payment
-            setSuccess("Payment successful using saved card! Thank you for your purchase.");
+            try {
+                setSubmitting(true);
+                await createBooking({
+                    showId: Number(showId),
+                    cardId: selecteddSavedCard.card_id,
+                    selectedSeats,
+                    ticketCounts: {
+                        adult: adultQty,
+                        child: childQty,
+                        senior: seniorQty,
+                    },
+                });
+                setSuccess("Payment successful! Your booking was saved.");
+            } catch (err) {
+                setError(err instanceof Error ? err.message : "Failed to create booking");
+            } finally {
+                setSubmitting(false);
+            }
             return;
         }
         
@@ -210,7 +239,7 @@ export default function Payment() {
             return;
         }
 
-        setSuccess("Payment successful! Thank you for your purchase.");
+        setError("For this demo, please use a saved card to complete checkout.");
     }
 
     return (
@@ -362,7 +391,7 @@ export default function Payment() {
                             <div style={{ display: "grid", gap: "10px" }}>
                                 {savedCards.map((card) => (
                                     <label
-                                        key={card.id}
+                                        key={card.card_id}
                                         style={{
                                             border: "1px solid #ddd",
                                             borderRadius: "10px",
@@ -378,8 +407,8 @@ export default function Payment() {
                                             <input
                                                 type="radio"
                                                 name="savedCard"
-                                                checked={selectedSavedCardId === card.id}
-                                                onChange={() => setSelectedSavedCardId(card.id)}
+                                                checked={selectedSavedCardId === card.card_id}
+                                                onChange={() => setSelectedSavedCardId(card.card_id)}
                                             />
                                             <div>
                                                 <div>{formatMaskedCardDisplay(card.card_number)}</div>
@@ -556,38 +585,55 @@ export default function Payment() {
                             flexWrap: "wrap",
                         }}
                     >
-                        <button
-                            type="button"
-                            onClick={() => navigate(-1)}
-                            style={{
-                                padding: "12px 18px",
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                            }}
-                        >
-                            Back
-                        </button>
+                        {success ? (
+                            <button
+                                type="button"
+                                onClick={() => navigate("/")}
+                                style={{
+                                    padding: "12px 18px",
+                                    borderRadius: "8px",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Return to Home
+                            </button>
+                        ) : (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(-1)}
+                                    style={{
+                                        padding: "12px 18px",
+                                        borderRadius: "8px",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    Back
+                                </button>
 
-                        <button
-                            type="submit"
-                            style={{
-                                padding: "12px 18px",
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                            }}
-                        >
-                            Submit Mock Payment
-                        </button>
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    style={{
+                                        padding: "12px 18px",
+                                        borderRadius: "8px",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    {submitting ? "Submitting..." : "Submit Mock Payment"}
+                                </button>
+                            </>
+                        )}
                     </div>
                 </form>
             </section>
 
             <aside
                 style={{
-                    border: "1px solid #ddd",
-                    borderRadius: "12px",
-                    padding: "24px",
-                    background: "#fff",
+                    border: "none",
+                    borderRadius: 0,
+                    padding: 0,
+                    background: "transparent",
                     height: "fit-content",
                 }}
             >
@@ -633,19 +679,6 @@ export default function Payment() {
                         <span>Total</span>
                         <span>${total.toFixed(2)}</span>
                     </div>
-                </div>
-
-                <div
-                    style={{
-                        marginTop: "20px",
-                        padding: "14px",
-                        borderRadius: "10px",
-                        background: "#f7f7f7",
-                        color: "#444",
-                    }}
-                >
-                    This page is for UI demonstration only. Final payment processing and
-                    order confirmation will be implemented later.
                 </div>
             </aside>
         </div>

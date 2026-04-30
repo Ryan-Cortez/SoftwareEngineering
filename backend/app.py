@@ -29,6 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -538,6 +539,33 @@ def payment_card_to_public_dict(c: PaymentCard) -> dict:
 MAX_PAYMENT_CARDS = 3
 
 
+def _parse_seat_code(code: str):
+    """
+    Accepts seat codes like "A1" or "B12".
+    Returns (row_label: str, seat_number: int) or (None, None) if invalid.
+    """
+    if not isinstance(code, str):
+        return None, None
+    m = re.match(r"^\s*([A-Za-z]+)\s*(\d+)\s*$", code)
+    if not m:
+        return None, None
+    row = m.group(1).upper()
+    try:
+        num = int(m.group(2))
+    except Exception:
+        return None, None
+    if num <= 0:
+        return None, None
+    return row, num
+
+
+def _money_to_float(val) -> float:
+    try:
+        return float(val)
+    except Exception:
+        return 0.0
+
+
 def _create_movie_from_request_data(data: dict):
     """
     Validates JSON for create-movie (admin UI + /api/movies POST).
@@ -694,7 +722,12 @@ def get_movies():
 @app.get("/api/movies/<int:movie_id>")
 def get_movie(movie_id: int):
     movie = Movie.query.get_or_404(movie_id)
-    return jsonify(movie.to_dict(include_shows=True, include_contributors=True))
+    data = movie.to_dict(include_shows=False, include_contributors=True)
+    now = datetime.utcnow()
+    data["shows"] = [
+        s.to_dict() for s in movie.shows if s.start_time and s.start_time > now
+    ]
+    return jsonify(data)
 
 
 @app.post("/api/movies")
@@ -1408,6 +1441,188 @@ def delete_payment_card(card_id: int):
     return jsonify({"message": "Card removed."}), 200
 
 
+@app.post("/api/bookings")
+def create_booking():
+    """
+    Create a booking + tickets for selected seats.
+
+    Frontend payload (see `frontend/src/api/cinemaApi.ts`):
+      {
+        showId: number,
+        cardId: number,
+        selectedSeats: string[],        // e.g. ["A1", "A2"]
+        ticketCounts: { adult, child, senior }
+      }
+    """
+    user, err = require_login()
+    if err:
+        return err
+    if user.customer is None:
+        return api_error("Customer account required.", 403)
+
+    data = request.get_json() or {}
+    show_id_raw = data.get("showId") if "showId" in data else data.get("show_id")
+    card_id_raw = data.get("cardId") if "cardId" in data else data.get("card_id")
+    selected_seats_raw = data.get("selectedSeats") if "selectedSeats" in data else data.get("selected_seats")
+    ticket_counts = data.get("ticketCounts") if "ticketCounts" in data else data.get("ticket_counts") or {}
+
+    try:
+        show_id = int(show_id_raw)
+    except Exception:
+        return api_error("showId is required and must be a number", 400)
+
+    try:
+        card_id = int(card_id_raw)
+    except Exception:
+        return api_error("cardId is required and must be a number", 400)
+
+    if not isinstance(selected_seats_raw, list) or not selected_seats_raw:
+        return api_error("selectedSeats is required and must be a non-empty array", 400)
+
+    def _count(k: str) -> int:
+        try:
+            return int(ticket_counts.get(k, 0) or 0)
+        except Exception:
+            return 0
+
+    adult = _count("adult")
+    child = _count("child")
+    senior = _count("senior")
+    if adult < 0 or child < 0 or senior < 0:
+        return api_error("ticketCounts values must be >= 0", 400)
+
+    total_tickets = adult + child + senior
+    if total_tickets <= 0:
+        return api_error("At least one ticket is required", 400)
+
+    if len(selected_seats_raw) != total_tickets:
+        return api_error("selectedSeats length must match total tickets selected", 400)
+
+    show = Show.query.get(show_id)
+    if not show:
+        return api_error("Show not found", 404)
+
+    # Ensure the card belongs to this customer.
+    card = PaymentCard.query.filter_by(card_id=card_id, customer_id=user.user_id, is_active=True).first()
+    if not card:
+        return api_error("Payment card not found for this user", 404)
+
+    # Lookup pricing + booking fee snapshots.
+    prices = {p.type: p for p in TicketPrice.query.all()}
+    for t in ("Adult", "Child", "Senior"):
+        if t not in prices:
+            return api_error(f"Ticket price not configured for {t}", 500)
+
+    fee = BookingFee.query.filter_by(is_active=True).order_by(BookingFee.fee_id.asc()).first()
+    if not fee:
+        return api_error("No active booking fee configured", 500)
+
+    # Parse and validate seats; ensure they belong to the show's showroom.
+    parsed = []
+    seen_codes = set()
+    for code in selected_seats_raw:
+        if not isinstance(code, str) or not code.strip():
+            return api_error("selectedSeats entries must be strings like 'A1'", 400)
+        norm = code.strip().upper()
+        if norm in seen_codes:
+            return api_error(f"Duplicate seat selected: {norm}", 400)
+        seen_codes.add(norm)
+        row_label, seat_number = _parse_seat_code(norm)
+        if not row_label:
+            return api_error(f"Invalid seat code: {code}", 400)
+        parsed.append((norm, row_label, seat_number))
+
+    seats = []
+    for _code, row_label, seat_number in parsed:
+        seat = Seat.query.filter_by(
+            showroom_id=show.showroom_id,
+            row_label=row_label,
+            seat_number=seat_number,
+        ).first()
+        if not seat:
+            return api_error(f"Seat not found in this showroom: {row_label}{seat_number}", 404)
+        seats.append(seat)
+
+    # Expand ticket types; deterministically assign to seats in the given order.
+    ticket_types = (["Adult"] * adult) + (["Child"] * child) + (["Senior"] * senior)
+
+    subtotal = (
+        adult * _money_to_float(prices["Adult"].price)
+        + child * _money_to_float(prices["Child"].price)
+        + senior * _money_to_float(prices["Senior"].price)
+    )
+    booking_fee_amount = _money_to_float(fee.amount)
+    promotion_discount_amount = 0.0
+    total_amount = max(0.0, subtotal + booking_fee_amount - promotion_discount_amount)
+
+    booking = Booking(
+        customer_id=user.user_id,
+        card_id=card_id,
+        show_id=show_id,
+        promotion_id=None,
+        fee_id=fee.fee_id,
+        booking_fee_amount=booking_fee_amount,
+        promotion_discount_amount=promotion_discount_amount,
+        total_amount=total_amount,
+        payment_reference=f"MOCK-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+    )
+
+    db.session.add(booking)
+    db.session.flush()  # assigns booking.booking_id
+
+    ticket_rows = []
+    for seat, ttype in zip(seats, ticket_types):
+        unit_price = _money_to_float(prices[ttype].price)
+        ticket = Ticket(
+            type=ttype,
+            unit_price=unit_price,
+            booking_id=booking.booking_id,
+            seat_id=seat.seat_id,
+            show_id=show_id,
+            showroom_id=show.showroom_id,
+        )
+        db.session.add(ticket)
+        ticket_rows.append(ticket)
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        # Most likely: uq_ticket_show_seat conflict (someone else booked a seat first).
+        return api_error("One or more selected seats are no longer available.", 409)
+    except Exception:
+        db.session.rollback()
+        return api_error("Failed to create booking.", 500)
+
+    return (
+        jsonify(
+            {
+                "message": "Booking created.",
+                "booking": {
+                    "booking_id": booking.booking_id,
+                    "customer_id": booking.customer_id,
+                    "show_id": booking.show_id,
+                    "card_id": booking.card_id,
+                    "booking_time": booking.booking_time.isoformat() if booking.booking_time else None,
+                    "total_amount": _money_to_float(booking.total_amount),
+                    "booking_fee_amount": _money_to_float(booking.booking_fee_amount),
+                    "promotion_discount_amount": _money_to_float(booking.promotion_discount_amount),
+                },
+                "tickets": [
+                    {
+                        "ticket_id": t.ticket_id,
+                        "type": t.type,
+                        "unit_price": _money_to_float(t.unit_price),
+                        "seat_id": t.seat_id,
+                    }
+                    for t in ticket_rows
+                ],
+            }
+        ),
+        201,
+    )
+
+
 @app.get("/api/favorites")
 def get_favorites():
     user = get_current_user()
@@ -1455,3 +1670,59 @@ def remove_favorite():
         db.session.commit()
 
     return jsonify({"message": "Removed from favorites."}), 200
+
+@app.get("/api/bookings")
+def get_order_history():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+    if user.customer is None:
+        return jsonify({"error": "Customer account required."}), 403
+
+    bookings = (
+        db.session.query(Booking)
+        .filter_by(customer_id=user.user_id)
+        .order_by(Booking.booking_time.desc())
+        .all()
+    )
+
+    result = []
+    for booking in bookings:
+        show = Show.query.get(booking.show_id)
+        movie = Movie.query.get(show.movie_id) if show else None
+        showroom = Showroom.query.get(show.showroom_id) if show else None
+        tickets = Ticket.query.filter_by(booking_id=booking.booking_id).all()
+        card = PaymentCard.query.filter_by(card_id=booking.card_id, customer_id=user.user_id).first()
+
+        result.append({
+            "booking_id": booking.booking_id,
+            "booking_time": booking.booking_time.isoformat() if booking.booking_time else None,
+            "total_amount": _money_to_float(booking.total_amount),
+            "booking_fee_amount": _money_to_float(booking.booking_fee_amount),
+            "promotion_discount_amount": _money_to_float(booking.promotion_discount_amount),
+            "payment_reference": booking.payment_reference,
+            "card_last_four": (card.last_four or "").strip() if card else None,
+            "show": {
+                "show_id": show.show_id,
+                "start_time": show.start_time.isoformat() if show and show.start_time else None,
+                "showroom_name": showroom.showroom_name if showroom else None,
+            } if show else None,
+            "movie": {
+                "movie_id": movie.movie_id,
+                "title": movie.title,
+                "genre": movie.genre,
+                "mpaa_rating": movie.mpaa_rating,
+                "trailer_image_url": movie.trailer_image_url,
+            } if movie else None,
+            "tickets": [
+                {
+                    "ticket_id": t.ticket_id,
+                    "type": t.type,
+                    "unit_price": _money_to_float(t.unit_price),
+                    "seat_id": t.seat_id,
+                }
+                for t in tickets
+            ],
+        })
+
+    return jsonify(result), 200

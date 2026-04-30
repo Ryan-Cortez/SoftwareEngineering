@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { redirect, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 
 type CheckoutState = {
@@ -34,8 +34,11 @@ function getStoredEmail(): string {
 
 function isUserLoggedIn(): boolean {
     try {
-        const token = localStorage.getItem("authToken");
-        return !!token;
+        // Login stores `token`; keep `authToken` for backward compatibility.
+        const token =
+            localStorage.getItem("token") ||
+            localStorage.getItem("authToken");
+        return Boolean(token);
     } catch (error) {
         return false;
     }

@@ -144,12 +144,17 @@ export async function createBooking(payload: CreateBookingPayload) {
     body: JSON.stringify(payload),
   });
 
-  const data = await res.json().catch(() => null);
+  const rawText = await res.text().catch(() => "");
+  const data = rawText ? (() => { try { return JSON.parse(rawText); } catch { return null; } })() : null;
 
   if (!res.ok) {
-    throw new Error(data?.message || data?.error || "Failed to create booking");
+    const msg =
+      (data && (data.message || data.error)) ||
+      (rawText && rawText.slice(0, 200)) ||
+      `Request failed (${res.status})`;
+    throw new Error(`Failed to create booking (${res.status}): ${msg}`);
   }
 
-  return data;
+  return data ?? {};
 }
     

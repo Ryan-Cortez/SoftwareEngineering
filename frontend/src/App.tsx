@@ -24,6 +24,8 @@ import AddShowtime from "./pages/AddShowtime";
 import ManagePromotions from "./pages/ManagePromotions";
 import ManageUsers from "./pages/ManageUsers";
 import OrderConfirmation from "./pages/OrderConfirmation";
+import AddPromotion from "./pages/AddPromotion";
+import MovieRecommendationsPage from "./pages/MovieRecommendationsPage";
 
 export default function App() {
     return (
@@ -54,6 +56,8 @@ export default function App() {
                 <Route path="/admin/promotions" element={<ManagePromotions />} />
                 <Route path="/admin/users" element={<ManageUsers />} />
                 <Route path="/order-confirmation" element={<OrderConfirmation />} />-
+                <Route path="/admin/promotions/add" element={<AddPromotion />} />
+                <Route path="/recommendations" element={<MovieRecommendationsPage />} />
             </Routes>
         </>
     );

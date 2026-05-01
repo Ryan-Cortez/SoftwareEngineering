@@ -18,6 +18,7 @@ export default function ManagePromotions() {
 
       try {
         const data = await getPromotions();
+
         if (!cancelled) {
           setPromotions(data);
         }
@@ -43,27 +44,64 @@ export default function ManagePromotions() {
     <main className="page">
       <header className="movies-header">
         <h1>Manage Promotions</h1>
+
         <div className="movies-controls">
-          <Link to="/admin" className="nav-link">
+          <Link to="/admin" className="nav-btn nav-btn--ghost">
             Back to Admin Portal
+          </Link>
+
+          <Link to="/admin/promotions/add" className="nav-btn nav-btn--primary">
+            Add Promotion
           </Link>
         </div>
       </header>
 
       {loading && <p>Loading promotions…</p>}
+
       {error && <p className="error">{error}</p>}
 
-      {!loading && !error && promotions.length === 0 && <p>No promotions found.</p>}
+      {!loading && !error && promotions.length === 0 && (
+        <p>No promotions found.</p>
+      )}
 
       {!loading && !error && promotions.length > 0 && (
-        <section style={{ display: "grid", gap: 16 }}>
+        <section className="movie-grid">
           {promotions.map((promotion) => (
-            <div key={promotion.id} className="movie-card" style={{ textAlign: "left", padding: 16 }}>
-              <h3>{promotion.title}</h3>
-              {promotion.description && <p>{promotion.description}</p>}
-              {promotion.discount_code && <p><strong>Code:</strong> {promotion.discount_code}</p>}
-              {promotion.start_date && <p><strong>Starts:</strong> {promotion.start_date}</p>}
-              {promotion.end_date && <p><strong>Ends:</strong> {promotion.end_date}</p>}
+            <div
+              key={promotion.code}
+              className="movie-card"
+              style={{ textAlign: "left", padding: 16 }}
+            >
+              <div className="movie-card__body">
+                <h3 className="movie-card__title">{promotion.code}</h3>
+
+                {promotion.description && (
+                  <p className="movie-card__synopsis">
+                    {promotion.description}
+                  </p>
+                )}
+
+                <p className="movie-card__meta">
+                  <strong>Discount Type:</strong> {promotion.discount_type}
+                </p>
+
+                <p className="movie-card__meta">
+                  <strong>Discount Value:</strong>{" "}
+                  {promotion.discount_type === "Percent"
+                    ? `${promotion.discount_value}%`
+                    : `$${promotion.discount_value}`}
+                </p>
+
+                <p className="movie-card__meta">
+                  <strong>Expires:</strong> {promotion.expiration_date}
+                </p>
+
+                <span className="movie-card__tag">
+                  {promotion.discount_type === "Percent"
+                    ? "Percent Discount"
+                    : "Amount Discount"}
+                </span>
+              </div>
             </div>
           ))}
         </section>

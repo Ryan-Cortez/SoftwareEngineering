@@ -67,13 +67,19 @@ export type CreateShowtimeInput = {
   showroom_id: number;
 };
 
+export type PromotionDiscountType = "Percent" | "Amount";
+
 export type Promotion = {
-  id: number;
-  title: string;
-  description?: string;
-  discount_code?: string;
-  start_date?: string;
-  end_date?: string;
+  code: string;
+  description: string;
+  discount_type: PromotionDiscountType;
+  discount_value: number;
+  expiration_date: string;
+};
+
+export type PromotionResponse = {
+  message?: string;
+  error?: string;
 };
 
 export async function createMovie(input: CreateMovieInput): Promise<Movie> {
@@ -140,4 +146,34 @@ export async function getPromotions(): Promise<Promotion[]> {
   );
 
   return Array.isArray(data) ? data : data.promotions ?? [];
+}
+
+async function handleJsonResponse<T>(response: Response): Promise<T> {
+  let data: PromotionResponse = {};
+
+  try {
+    data = await response.json();
+  } catch {
+    // Prevents crash if backend returns an empty response body.
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed.");
+  }
+
+  return data as T;
+}
+
+export async function createPromotion(
+  promotionData: Promotion
+): Promise<PromotionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/promotions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(promotionData),
+  });
+
+  return handleJsonResponse<PromotionResponse>(response);
 }

@@ -113,6 +113,44 @@ def _send_email_or_log(*, subject: str, recipients: list[str], body: str, demo_f
     mail.send(msg)
 
 
+def _notify_promotion_opt_in_users_best_effort(promo: "Promotion") -> None:
+    """
+    Best-effort broadcast when a new promotion is created.
+    Never blocks the admin create-promotion request.
+    """
+    try:
+        if promo is None:
+            return
+
+        q = (
+            db.session.query(User.email)
+            .join(Customer, Customer.customer_id == User.user_id)
+            .filter(Customer.promotion_opt_in.is_(True))
+            .filter(User.status == "Active")
+            .filter(User.is_verified.is_(True))
+        )
+        recipients = [row.email for row in q.all() if (row.email or "").strip()]
+        if not recipients:
+            return
+
+        body = (
+            f"Promotion: {promo.code}\n\n"
+            f"{promo.description or ''}\n\n"
+            f"Discount type: {promo.discount_type}\n"
+            f"Discount value: {promo.discount_value}\n"
+            f"Expires: {promo.expiration_date.isoformat() if promo.expiration_date else ''}\n"
+        )
+
+        _send_email_or_log(
+            subject=f"New Promotion: {promo.code}",
+            recipients=recipients,
+            body=body,
+            demo_fallback_label=f"Promotion email would go to: {', '.join(recipients) if recipients else '(no subscribers)'}",
+        )
+    except Exception as e:
+        print(f"Promotion broadcast email failed to send: {e}")
+
+
 def _fernet() -> Fernet:
     key = os.environ.get("FERNET_KEY", "").strip()
     if not key:
@@ -1442,6 +1480,9 @@ def admin_add_promotion():
     )
     db.session.add(p)
     db.session.commit()
+
+    # Send announcement email to all opted-in users (best-effort).
+    _notify_promotion_opt_in_users_best_effort(p)
 
     return (
         jsonify(

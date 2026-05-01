@@ -33,7 +33,10 @@ or camelCase equivalents; it normalizes both.
 
 import os
 import re
+import json
 from datetime import datetime
+from urllib import request as urllib_request
+from urllib.error import HTTPError, URLError
 
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, jsonify, request, session
@@ -2166,3 +2169,184 @@ def get_order_history():
         })
 
     return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# AI movie recommendations (frontend: POST /api/recommendations/movies)
+# ---------------------------------------------------------------------------
+
+def _ollama_recommendation_subset(
+    *,
+    candidate_movies: list[dict],
+    limit: int = 8,
+) -> list[dict]:
+    """
+    Call a local Ollama model to select a recommendation subset.
+
+    Returns a list of dicts in the frontend shape:
+      { title: str, genre?: str, rating?: str, reason: str }
+    """
+    base_url = (os.environ.get("OLLAMA_BASE_URL") or "").strip() or "http://127.0.0.1:11434"
+    model = (os.environ.get("OLLAMA_MODEL") or "").strip() or "llama3.1"
+    max_candidates = int(os.environ.get("OLLAMA_MAX_CANDIDATES") or 200)
+    max_candidates = max(25, min(500, max_candidates))
+
+    candidates = candidate_movies[:max_candidates]
+
+    system = "\n".join(
+        [
+            "You are a movie recommendation engine for a cinema app.",
+            "You will be given:",
+            "- candidates: movies in the logged-in user's favorites list (each has title, genre, rating)",
+            "",
+            "Task: choose a subset of these favorites to recommend watching next.",
+            "",
+            "Hard rules:",
+            f"- Return EXACTLY {limit} recommendations (or fewer if candidates has fewer than {limit}).",
+            "- Each recommendation title MUST exactly match a title from candidates.",
+            "- Output MUST be valid JSON only (no markdown), in this exact shape:",
+            '{ "recommendations": [ { "title": "...", "reason": "...", "genre": "...", "rating": "..." } ] }',
+            "- Keep reasons short (1 sentence).",
+        ]
+    )
+
+    user_content = {
+        "candidates": candidates,
+    }
+
+    # Ollama /api/chat request. We require JSON-only output, so we set format="json".
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user_content, ensure_ascii=False)},
+        ],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.6},
+    }
+
+    req = urllib_request.Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+    except HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8")
+        except Exception:
+            body = ""
+        raise RuntimeError(f"Ollama error ({getattr(e, 'code', 'unknown')}): {body[:500]}") from e
+    except URLError as e:
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure it's running locally on 127.0.0.1:11434 "
+            "and that you have pulled the model (e.g. `ollama pull llama3.1`)."
+        ) from e
+
+    try:
+        msg = json.loads(raw)
+    except Exception as e:
+        raise RuntimeError(f"Ollama returned non-JSON: {raw[:500]}") from e
+
+    # Ollama /api/chat returns: { message: { role, content }, ... }
+    content = ""
+    try:
+        content = ((msg.get("message") or {}) or {}).get("content") or ""
+    except Exception:
+        content = ""
+
+    content = (content or "").strip()
+    if not content:
+        raise RuntimeError("Ollama response content was empty")
+
+    try:
+        out = json.loads(content)
+    except Exception as e:
+        raise RuntimeError(f"Ollama did not return valid JSON-only output: {content[:500]}") from e
+
+    recs = out.get("recommendations") if isinstance(out, dict) else None
+    if not isinstance(recs, list):
+        raise RuntimeError("Ollama output missing recommendations[]")
+
+    # Enforce titles exist in candidates; fill genre/rating from DB-provided dicts.
+    by_title = {str(m.get("title")): m for m in candidates if isinstance(m, dict) and (m.get("title") or "").strip()}
+
+    normalized: list[dict] = []
+    for r in recs[:limit]:
+        if not isinstance(r, dict):
+            continue
+        title = (r.get("title") or "").strip()
+        if not title or title not in by_title:
+            continue
+
+        m = by_title[title]
+        reason = (r.get("reason") or "").strip() or "Recommended based on your favorites."
+
+        normalized.append(
+            {
+                "title": title,
+                "genre": (r.get("genre") or m.get("genre") or "").strip() or None,
+                "rating": (r.get("rating") or m.get("rating") or "").strip() or None,
+                "reason": reason,
+            }
+        )
+
+    # If the model returned fewer valid items than requested, just return what we have.
+    return normalized
+
+
+@app.post("/api/recommendations/movies")
+def recommend_movies_from_favorites():
+    """
+    Frontend calls this endpoint to get AI recommendations.
+    Payload: { favorites: RecommendationRequestMovie[] }
+    """
+    user, err = require_login()
+    if err:
+        return err
+    if user.customer is None:
+        return api_error("Customer account required.", 403)
+
+    data = request.get_json(silent=True) or {}
+    favorites = data.get("favorites")
+    if favorites is None:
+        return api_error("favorites is required", 400)
+    if not isinstance(favorites, list):
+        return api_error("favorites must be an array", 400)
+
+    # Only send movies from the *logged-in user's* favorites list.
+    fav_rows = FavoriteMovie.query.filter_by(customer_id=user.user_id).all()
+    favorite_movie_ids = [r.movie_id for r in fav_rows if r and r.movie_id is not None]
+    if not favorite_movie_ids:
+        return jsonify({"recommendations": []}), 200
+
+    fav_movies = (
+        Movie.query.filter(Movie.movie_id.in_(favorite_movie_ids))
+        .order_by(Movie.title.asc())
+        .all()
+    )
+    candidates = [
+        {"title": m.title, "genre": m.genre or "", "rating": m.mpaa_rating or ""}
+        for m in fav_movies
+        if m and (m.title or "").strip()
+    ]
+    if not candidates:
+        return jsonify({"recommendations": []}), 200
+
+    try:
+        recs = _ollama_recommendation_subset(
+            candidate_movies=candidates,
+            limit=8,
+        )
+    except RuntimeError as e:
+        return api_error(str(e), 500)
+
+    return jsonify({"recommendations": recs}), 200

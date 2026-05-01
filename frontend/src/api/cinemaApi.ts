@@ -28,6 +28,25 @@ export type Showtime = {
   raw: string; // original datetime string from API
 };
 
+export type MovieRecommendation = {
+  title: string;
+  genre?: string;
+  rating?: string;
+  reason: string;
+};
+
+export type RecommendationRequestMovie = {
+  id: number;
+  title: string;
+  genre: string;
+  rating: string;
+  description: string;
+};
+
+export type MovieRecommendationResponse = {
+  recommendations: MovieRecommendation[];
+};
+
 
 export function normalizeMovie (raw: any): Movie {
   return {
@@ -158,3 +177,40 @@ export async function createBooking(payload: CreateBookingPayload) {
   return data ?? {};
 }
     
+export async function getAiMovieRecommendations(
+  favoriteMovies: RecommendationRequestMovie[]
+): Promise<MovieRecommendationResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/recommendations/movies`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      favorites: favoriteMovies,
+    }),
+  });
+
+  const rawText = await res.text().catch(() => "");
+
+  const data = rawText
+    ? (() => {
+        try {
+          return JSON.parse(rawText);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.message || data.error)) ||
+      (rawText && rawText.slice(0, 200)) ||
+      `Request failed (${res.status})`;
+
+    throw new Error(`Failed to get recommendations (${res.status}): ${msg}`);
+  }
+
+  return data ?? { recommendations: [] };
+}

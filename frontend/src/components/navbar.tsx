@@ -55,6 +55,9 @@ export default function Navbar() {
               <Link to="/profile" className="nav-btn nav-btn--ghost">
                 Profile
               </Link>
+              <Link to="/recommendations" className="nav-btn nav-btn--ghost">
+                Recommendations
+              </Link>
               {user.role === "admin" && (
                 <Link to="/admin" className="nav-btn nav-btn--ghost">
                   Admin

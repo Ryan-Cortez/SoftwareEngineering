@@ -7,9 +7,9 @@ export default function Search() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [search, setSearch] = useState(" ");
-    const [genre, setGenre] = useState(" ");
-    const [showDate, setShowDate] = useState(" ");
+    const [search, setSearch] = useState("");
+    const [genre, setGenre] = useState("");
+    const [showDate, setShowDate] = useState("");
 
     useEffect (() => {
         let cancelled = false;
@@ -85,25 +85,19 @@ export default function Search() {
                     ))}
                     </select>
             </div>
-            <div>
-                <label>Showtimes Filter </label>
-                <select
+             <div className="filter">
+                <label>Show Date </label>
+                <input
+                    type="date"
                     value={showDate}
                     onChange={(e) => setShowDate(e.target.value)}
-                >
-                    <option value="">All</option>
-                    {showDateOptions.map((s) => (
-                        <option key={s} value={s}>
-                            {s}
-                    </option>
-                    ))}
-                    </select>
+                />
             </div>
             
             <button onClick={() => {
-                setSearch(" ");
-                setGenre(" ");
-                setShowDate(" ");
+                setSearch("");
+                setGenre("");
+                setShowDate("");
             }}
             disabled={!hasFilters}
             >Clear</button>

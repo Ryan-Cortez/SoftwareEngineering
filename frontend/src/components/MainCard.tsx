@@ -11,6 +11,7 @@ export default function MainCard({ movie,}: Props) {
     const navigate = useNavigate();
     const [isFavorite, setIsFavorite] = useState(false);
     const [favoriteLoading, setFavoriteLoading] = useState(false);
+    const [favoriteError, setFavoriteError] = useState("");
 
     useEffect(() => {
         async function loadFavorites() {
@@ -30,6 +31,7 @@ export default function MainCard({ movie,}: Props) {
 
         try {
             setFavoriteLoading(true);
+            setFavoriteError("");
 
             if(isFavorite) {
                 await removeFavorite(movie.id);
@@ -38,8 +40,15 @@ export default function MainCard({ movie,}: Props) {
                 await addFavorite(movie.id);
                 setIsFavorite(true);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to update favorite:", error);
+
+            if (error?.status === 401 || error?.message?.includes("401")) {
+                setFavoriteError("You must be logged in to add favorites.");
+            } else {
+                setFavoriteError("Log in to add favorirtes.");
+            }
+            
         } finally {
             setFavoriteLoading(false);
         }
@@ -83,9 +92,13 @@ export default function MainCard({ movie,}: Props) {
             >
             {isFavorite ? "❤️" : "🤍"}
           </button>
-          
+          {favoriteError && (
+            <p style={{ color: "red", marginTop: "6px", fontSize: "0.9rem" }}>
+                {favoriteError}
+            </p>
+        )}
         </div>
-        
+
             {movie.description && <p className="movie-card__synopsis">{movie.description}</p>}
 
             <div className="movie-card__tag">

@@ -12,6 +12,7 @@ export default function MovieDetails() {
     const [error, setError] = useState<string | null>(null);
     const [isFavorite, setIsFavorite] = useState(false);
     const [favoriteLoading, setFavoriteLoading] = useState(false);
+    const [favoriteError, setFavoriteError] = useState("");
 
     const trailerEmbedUrl = useMemo(() => {
         if (!movie?.trailerUrl) return "";
@@ -76,6 +77,8 @@ export default function MovieDetails() {
         e.stopPropagation();
         try {
             setFavoriteLoading(true);
+            setFavoriteError("");
+
             if (isFavorite) {
                 await removeFavorite(movieId);
                 setIsFavorite(false);
@@ -83,8 +86,14 @@ export default function MovieDetails() {
                 await addFavorite(movieId);
                 setIsFavorite(true);
             }
-        } catch {
-            // not logged in or network error
+        } catch (error: any) {
+            console.error("Failed to update favorite:", error);
+
+            if (error?.status === 401 || error?.message?.includes("401")) {
+                setFavoriteError("You must be logged in to add favorites.");
+            } else {
+                setFavoriteError("Log in to add favorirtes.");
+            }
         } finally {
             setFavoriteLoading(false);
         }
@@ -139,7 +148,13 @@ export default function MovieDetails() {
                             >
                                 {isFavorite ? "❤️" : "🤍"}
                             </button>
+                            {favoriteError && (
+                                <p style={{ color: "red", marginTop: "6px", fontSize: "0.9rem" }}>
+                                    {favoriteError}
+                                </p>
+                            )}
                         </div>
+                        
                         <div className="movie-details__meta">
                             <span>{movie.genre}</span>
                             {movie.rating && <span>• {movie.rating}</span>}

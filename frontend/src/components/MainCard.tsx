@@ -47,9 +47,9 @@ export default function MainCard({ movie,}: Props) {
 
     return (
         <button
-        type="button"
-        className="movie-card"
-        onClick={() => navigate(`/movies/${movie.id}`)}
+            type="button"
+            className="movie-card"
+            onClick={() => navigate(`/movies/${movie.id}`)}
         >
         <img
             className="movie-card__poster"
@@ -59,9 +59,11 @@ export default function MainCard({ movie,}: Props) {
         />
 
         <div className="movie-card__body">
-            <h3 className="movie-card__title">{movie.title}</h3>
-            {movie.genre && <span> {movie.genre}</span>}
-            {movie.rating && <span> • {movie.rating}</span>}
+            <h3 className="movie-card__title" style={{color: "white"}}>{movie.title}</h3>
+            <div style={{color:"grey"}}>
+                {movie.genre && <span> {movie.genre}</span>}
+                {movie.rating && <span> • {movie.rating}</span>}
+                
 
 
             <button
@@ -82,6 +84,7 @@ export default function MainCard({ movie,}: Props) {
             {isFavorite ? "❤️" : "🤍"}
           </button>
           
+        </div>
         
             {movie.description && <p className="movie-card__synopsis">{movie.description}</p>}
 

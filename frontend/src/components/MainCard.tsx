@@ -60,8 +60,8 @@ export default function MainCard({ movie,}: Props) {
 
         <div className="movie-card__body">
             <h3 className="movie-card__title">{movie.title}</h3>
-            {movie.rating && <span> {movie.rating}</span>}
-            {movie.runtime && <span> • {movie.runtime} min</span>}
+            {movie.genre && <span> {movie.genre}</span>}
+            {movie.rating && <span> • {movie.rating}</span>}
 
 
             <button

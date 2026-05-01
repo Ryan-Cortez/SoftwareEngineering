@@ -60,6 +60,9 @@ export default function MainCard({ movie,}: Props) {
 
         <div className="movie-card__body">
             <h3 className="movie-card__title">{movie.title}</h3>
+            {movie.rating && <span> {movie.rating}</span>}
+            {movie.runtime && <span> • {movie.runtime} min</span>}
+
 
             <button
                 type="button"
@@ -78,16 +81,14 @@ export default function MainCard({ movie,}: Props) {
             >
             {isFavorite ? "❤️" : "🤍"}
           </button>
-
-            <div className="movie-card__meta">
-            {movie.rating && <span>• {movie.rating}</span>}
-            </div>
-
+          
+        
             {movie.description && <p className="movie-card__synopsis">{movie.description}</p>}
 
             <div className="movie-card__tag">
             {movie.status === "CURRENTLY_RUNNING" ? "Now Playing" : "Coming Soon"}
             </div>
+            
         </div>
         </button>
     );

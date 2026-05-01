@@ -194,7 +194,7 @@ export default function Payment() {
             }
             try {
                 setSubmitting(true);
-                await createBooking({
+                const response = await createBooking({
                     showId: Number(showId),
                     cardId: selecteddSavedCard.card_id,
                     selectedSeats,
@@ -204,7 +204,12 @@ export default function Payment() {
                         senior: seniorQty,
                     },
                 });
+
                 setSuccess("Payment successful! Your booking was saved.");
+
+                navigate("/order-confirmation", { 
+                    state:  response,
+                });
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to create booking");
             } finally {
@@ -258,7 +263,7 @@ export default function Payment() {
                     border: "1px solid #ddd",
                     borderRadius: "12px",
                     padding: "24px",
-                    background: "#fff",
+                    
                 }}
             >
                 <h1 style={{ marginTop: 0 }}>Payment</h1>
@@ -393,7 +398,7 @@ export default function Payment() {
                                     <label
                                         key={card.card_id}
                                         style={{
-                                            border: "1px solid #ddd",
+                                            border: "1px solid",
                                             borderRadius: "10px",
                                             padding: "12px",
                                             display: "flex",
@@ -448,7 +453,7 @@ export default function Payment() {
                                         width: "100%",
                                         padding: "12px",
                                         borderRadius: "8px",
-                                        border: "1px solid #ccc",
+                                        border: "1px solid",
                                     }}
                                 />
                             </div>
@@ -471,7 +476,7 @@ export default function Payment() {
                                         width: "100%",
                                         padding: "12px",
                                         borderRadius: "8px",
-                                        border: "1px solid #ccc",
+                                        border: "1px solid",
                                     }}
                                 />
                             </div>
@@ -501,7 +506,7 @@ export default function Payment() {
                                             width: "100%",
                                             padding: "12px",
                                             borderRadius: "8px",
-                                            border: "1px solid #ccc",
+                                            border: "1px solid",
                                         }}
                                     />
                                 </div>
@@ -526,7 +531,7 @@ export default function Payment() {
                                             width: "100%",
                                             padding: "12px",
                                             borderRadius: "8px",
-                                            border: "1px solid #ccc",
+                                            border: "1px solid ",
                                         }}
                                     />
                                 </div>
@@ -553,7 +558,7 @@ export default function Payment() {
                                             width: "100%",
                                             padding: "12px",
                                             borderRadius: "8px",
-                                            border: "1px solid #ccc",
+                                            border: "1px solid",
                                         }}
                                     />
                                 </div>
